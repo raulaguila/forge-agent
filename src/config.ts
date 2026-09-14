@@ -1,12 +1,16 @@
 import * as vscode from "vscode";
 import type { ForgeConfig, ProviderId } from "./types";
+import { defaultBaseUrl } from "./providers";
 
 export function readConfig(): ForgeConfig {
   const c = vscode.workspace.getConfiguration("forgeAgent");
+  const provider = c.get<ProviderId>("provider", "openai");
+  const configuredBase = (c.get<string>("baseUrl", "") || "").replace(/\/$/, "");
   return {
-    provider: c.get<ProviderId>("provider", "openai"),
+    provider,
     model: c.get<string>("model", "gpt-4o"),
-    baseUrl: (c.get<string>("baseUrl", "") || "").replace(/\/$/, ""),
+    baseUrl: configuredBase || defaultBaseUrl(provider),
+    tlsInsecure: c.get<boolean>("tlsInsecure", false),
     maxToolRounds: c.get<number>("maxToolRounds", 25),
     autoApproveReads: c.get<boolean>("autoApproveReads", true),
     requireApprovalForWrites: c.get<boolean>("requireApprovalForWrites", true),

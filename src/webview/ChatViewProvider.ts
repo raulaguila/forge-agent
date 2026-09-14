@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { readConfig } from "../config";
-import { createProvider } from "../providers";
+import { createProvider, providerRequiresApiKey } from "../providers";
 import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
 import type { AgentEvent } from "../types";
@@ -108,7 +108,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async ensureSession(): Promise<AgentSession | undefined> {
     const config = readConfig();
     const apiKey = await this.keyStore.get(config.provider);
-    if (!apiKey) {
+    if (providerRequiresApiKey(config.provider) && !apiKey) {
       this.post({
         type: "error",
         text: "Nenhuma API key configurada. Use “Set API Key (BYOK)”.",
@@ -120,10 +120,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     const freshConfig = readConfig();
-    const key = (await this.keyStore.get(freshConfig.provider))!;
+    const key = (await this.keyStore.get(freshConfig.provider)) ?? "";
     let provider;
     try {
-      provider = createProvider(freshConfig.provider, key, freshConfig.baseUrl);
+      provider = createProvider({
+        provider: freshConfig.provider,
+        apiKey: key,
+        baseUrl: freshConfig.baseUrl,
+        tlsInsecure: freshConfig.tlsInsecure,
+      });
     } catch (e) {
       this.post({
         type: "error",

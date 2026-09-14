@@ -2,7 +2,15 @@
 
 Extensão VS Code de **agentic coding** com **BYOK** (Bring Your Own Key).
 
-O agent conversa no painel lateral, chama tools no seu workspace (ler/editar arquivos, buscar, terminal, diagnósticos) e usa a API key que você configurar — OpenAI, Anthropic ou qualquer endpoint OpenAI-compatible (OpenRouter, Groq, DeepSeek, Ollama, Azure…).
+Provedores suportados:
+
+| Provider | Auth | Base URL | Notas |
+|----------|------|----------|-------|
+| `openai` | API key | `https://api.openai.com/v1` | Oficial |
+| `openai-compatible` | API key | **obrigatória** (`…/v1`) | OpenRouter, Groq, DeepSeek, Azure, proxies; **TLS insecure** opcional |
+| `ollama` | opcional | `http://localhost:11434` | API nativa `/api/chat` + tools |
+| `anthropic` | API key | `https://api.anthropic.com` | Claude |
+| `gemini` | API key | `https://generativelanguage.googleapis.com/v1beta` | Function calling |
 
 ## Instalação (dev)
 
@@ -23,10 +31,40 @@ npm run package
 
 1. Command Palette → **Forge Agent: Set API Key (BYOK)**
 2. Escolha o provedor e cole a key (fica no `SecretStorage`, não no `settings.json`)
-3. Ajuste em Settings:
-   - `forgeAgent.provider` — `openai` | `anthropic` | `openai-compatible`
-   - `forgeAgent.model` — ex. `gpt-4o`, `claude-sonnet-4-20250514`
+3. Settings úteis:
+   - `forgeAgent.provider` — `openai` \| `openai-compatible` \| `ollama` \| `anthropic` \| `gemini`
+   - `forgeAgent.model` — ex. `gpt-4o`, `claude-sonnet-4-20250514`, `gemini-2.0-flash`, `llama3.1`
    - `forgeAgent.baseUrl` — obrigatório para `openai-compatible`
+   - `forgeAgent.tlsInsecure` — `true` para HTTPS com certificado self-signed (proxies corporativos)
+
+### Exemplos
+
+**OpenAI-compatible + TLS insecure**
+```json
+{
+  "forgeAgent.provider": "openai-compatible",
+  "forgeAgent.baseUrl": "https://llm.empresa.local/v1",
+  "forgeAgent.model": "gpt-4o",
+  "forgeAgent.tlsInsecure": true
+}
+```
+
+**Ollama**
+```json
+{
+  "forgeAgent.provider": "ollama",
+  "forgeAgent.baseUrl": "http://localhost:11434",
+  "forgeAgent.model": "llama3.1"
+}
+```
+
+**Gemini**
+```json
+{
+  "forgeAgent.provider": "gemini",
+  "forgeAgent.model": "gemini-2.0-flash"
+}
+```
 
 ## Uso
 
@@ -56,7 +94,7 @@ src/
   config.ts             # settings
   types.ts
   secrets/keys.ts       # BYOK via SecretStorage
-  providers/            # OpenAI / Anthropic / compatible
+  providers/            # OpenAI / compatible / Ollama / Anthropic / Gemini
   agent/
     session.ts          # loop agentic (LLM ↔ tools)
     tools.ts            # implementação das tools
@@ -69,6 +107,7 @@ media/                  # ícone + assets do webview
 - Keys só no SecretStorage do VS Code
 - Paths das tools restritos à raiz do workspace
 - Aprovação explícita para write/terminal (default ligado)
+- `tlsInsecure` desliga verificação de certificado — use só em redes confiáveis
 
 ## Roadmap sugerido
 

@@ -1,4 +1,9 @@
-export type ProviderId = "openai" | "anthropic" | "openai-compatible";
+export type ProviderId =
+  | "openai"
+  | "openai-compatible"
+  | "ollama"
+  | "anthropic"
+  | "gemini";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -74,6 +79,7 @@ export interface ForgeConfig {
   provider: ProviderId;
   model: string;
   baseUrl: string;
+  tlsInsecure: boolean;
   maxToolRounds: number;
   autoApproveReads: boolean;
   requireApprovalForWrites: boolean;

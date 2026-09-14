@@ -1,8 +1,8 @@
 {
   "name": "forge-agent",
   "displayName": "Forge Agent",
-  "description": "Agentic coding assistant with Bring Your Own Key (BYOK) — OpenAI, Anthropic e OpenAI-compatible.",
-  "version": "0.1.0",
+  "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
+  "version": "0.2.0",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"
@@ -20,6 +20,8 @@
     "coding",
     "openai",
     "anthropic",
+    "gemini",
+    "ollama",
     "chatgpt",
     "claude"
   ],
@@ -121,8 +123,17 @@
           "type": "string",
           "enum": [
             "openai",
+            "openai-compatible",
+            "ollama",
             "anthropic",
-            "openai-compatible"
+            "gemini"
+          ],
+          "enumDescriptions": [
+            "OpenAI oficial (api.openai.com)",
+            "Qualquer endpoint /v1/chat/completions (OpenRouter, Groq, Azure, proxies…)",
+            "Ollama local ou remoto (/api/chat)",
+            "Anthropic Claude",
+            "Google Gemini"
           ],
           "default": "openai",
           "description": "Provedor LLM (BYOK)."
@@ -130,12 +141,17 @@
         "forgeAgent.model": {
           "type": "string",
           "default": "gpt-4o",
-          "description": "Modelo a usar (ex.: gpt-4o, claude-sonnet-4-20250514, deepseek-chat)."
+          "description": "Modelo (ex.: gpt-4o, claude-sonnet-4-20250514, gemini-2.0-flash, llama3.1)."
         },
         "forgeAgent.baseUrl": {
           "type": "string",
           "default": "",
-          "description": "Base URL customizada (obrigatória para openai-compatible; opcional para OpenAI)."
+          "description": "Base URL. Obrigatória para openai-compatible. Defaults: OpenAI api.openai.com/v1, Ollama http://localhost:11434, Anthropic api.anthropic.com, Gemini generativelanguage.googleapis.com/v1beta."
+        },
+        "forgeAgent.tlsInsecure": {
+          "type": "boolean",
+          "default": false,
+          "description": "Desabilita verificação do certificado TLS (self-signed / proxy corporativo). Use principalmente com openai-compatible em HTTPS interno."
         },
         "forgeAgent.maxToolRounds": {
           "type": "number",
