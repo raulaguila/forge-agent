@@ -440,6 +440,14 @@ export function createToolRegistry(): Map<string, RegisteredTool> {
   return new Map(tools.map((t) => [t.def.name, t]));
 }
 
-export function toolDefinitions(registry: Map<string, RegisteredTool>): ToolDefinition[] {
-  return [...registry.values()].map((t) => t.def);
+export function toolDefinitions(
+  registry: Map<string, RegisteredTool>,
+  opts?: { risks?: ToolRisk[] }
+): ToolDefinition[] {
+  let tools = [...registry.values()];
+  if (opts?.risks?.length) {
+    const allowed = new Set(opts.risks);
+    tools = tools.filter((t) => allowed.has(t.risk));
+  }
+  return tools.map((t) => t.def);
 }

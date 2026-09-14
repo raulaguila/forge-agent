@@ -479,7 +479,7 @@ export class SettingsPanel {
             <label>
               <span>Autonomia</span>
               <select id="autonomy">
-                <option value="ask">chat — conversa sem tools</option>
+                <option value="ask">ask — pergunta com tools de leitura</option>
                 <option value="plan">plan — investiga e propõe plano</option>
                 <option value="agent">agent — edits com aprovação</option>
                 <option value="auto">auto — aplica writes</option>

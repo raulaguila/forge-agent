@@ -57,10 +57,10 @@
 
   const MODE_META = {
     ask: {
-      label: "Chat",
+      label: "Ask",
       icon: "💬",
-      banner: "Chat — respostas sem tools",
-      placeholder: "Pergunte qualquer coisa…",
+      banner: "Ask — lê o repo e responde (sem editar)",
+      placeholder: "Pergunte sobre o código…",
     },
     plan: {
       label: "Plan",
@@ -321,13 +321,13 @@
     box.appendChild(el("div", "hero-mark"));
     box.appendChild(el("h1", null, "Forge"));
     box.appendChild(
-      el("p", null, "Chat para perguntar · Plan para planejar · Agent para editar.")
+      el("p", null, "Ask para perguntar · Plan para planejar · Agent para editar.")
     );
     const list = el("div", "empty-suggestions");
     [
       {
         title: "Explicar este arquivo",
-        sub: "Modo Chat · sem tools",
+        sub: "Modo Ask · lê o repo",
         prompt: "Explique o arquivo atual: o que faz, riscos e como testar.",
         mode: "ask",
       },
@@ -679,7 +679,7 @@
         } else {
           appendMessage(
             "assistant",
-            "Demo visual — **Chat / Plan / Agent** no estilo Continue.\n\n```ts\n<ModeSelect />\n```",
+            "Demo visual — **Ask / Plan / Agent** no estilo Continue.\n\n```ts\n<ModeSelect />\n```",
             "Forge"
           );
         }
@@ -706,7 +706,7 @@
     messagesEl.appendChild(el("div", "demo-banner", "Prévia visual"));
     appendMessage(
       "user",
-      "Quero modos Chat/Plan/Agent e Edit no estilo Continue.",
+      "Quero modos Ask/Plan/Agent e Edit no estilo Continue.",
       "Você"
     );
     const thinking = el("details", "msg thinking");
@@ -736,11 +736,11 @@
     );
     appendMessage(
       "assistant",
-      "Fluxos alinhados ao Continue:\n\n- **Chat** — sem tools\n- **Plan** — leitura + plano\n- **Agent** — edits com aprovação\n- **Edit** — chrome sobre a seleção (Esc para sair)\n\n```tsx\n<ModeSelect />\n```",
+      "Fluxos alinhados ao Continue:\n\n- **Ask** — tools de leitura, sem editar\n- **Plan** — leitura + plano\n- **Agent** — edits com aprovação\n- **Edit** — chrome sobre a seleção (Esc para sair)\n\n```tsx\n<ModeSelect />\n```",
       "Forge"
     );
     appendPlanCard(
-      "## Plano demo\n1. Renomear Ask → Chat\n2. CTA **Executar plano**\n3. Banner de Edit"
+      "## Plano demo\n1. Ask com tools de leitura\n2. CTA **Executar plano**\n3. Banner de Edit"
     );
     if (contextStrip) contextStrip.classList.remove("hidden");
     if (contextLabel) contextLabel.textContent = "Edit · ModeSelect.tsx · L12–40";

@@ -751,8 +751,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 <button type="button" class="pop-item" data-mode="ask" role="option">
                   <span class="pop-icon">💬</span>
                   <span class="pop-text">
-                    <span class="pop-label">Chat</span>
-                    <span class="pop-hint">Respostas sem tools</span>
+                    <span class="pop-label">Ask</span>
+                    <span class="pop-hint">Lê o repo e responde</span>
                   </span>
                   <span class="pop-check"></span>
                 </button>

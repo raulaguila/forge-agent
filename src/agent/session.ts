@@ -6,6 +6,7 @@ import type {
   DiffProposal,
   ForgeConfig,
   LlmProvider,
+  ToolDefinition,
   ToolRisk,
 } from "../types";
 import {
@@ -33,7 +34,7 @@ export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
 
   const modeHint =
     config.autonomy === "ask"
-      ? "Modo CHAT: conversa e explicações. Não use tools nem tente editar arquivos ou rodar terminal."
+      ? "Modo ASK: responda perguntas sobre o repositório usando tools de leitura (read_file, list_dir, search, diagnostics, etc.). NÃO edite arquivos nem rode terminal."
       : config.autonomy === "plan"
         ? "Modo PLAN: apenas leitura. Investigue o código com tools de leitura e entregue um plano Markdown detalhado (objetivo, passos, arquivos a tocar, riscos). NÃO edite arquivos nem rode terminal."
         : config.autonomy === "auto"
@@ -151,7 +152,7 @@ export class AgentSession {
         const { message, finishReason, usage } = await this.provider.complete({
           model: this.config.model,
           messages: this.messages,
-          tools: toolDefinitions(this.registry),
+          tools: this.toolsForMode(),
           temperature: this.config.temperature,
           signal,
           onDelta: (text) => {
@@ -416,10 +417,18 @@ export class AgentSession {
     });
   }
 
+  /** Ask/Plan: só tools de leitura; Agent/Auto: todas. */
+  private toolsForMode(): ToolDefinition[] {
+    if (this.config.autonomy === "ask" || this.config.autonomy === "plan") {
+      return toolDefinitions(this.registry, { risks: ["read"] });
+    }
+    return toolDefinitions(this.registry);
+  }
+
   private needsApproval(risk: ToolRisk): boolean {
     const mode = this.config.autonomy;
 
-    if (mode === "ask") {
+    if (mode === "ask" || mode === "plan") {
       if (risk === "read") {
         return !this.config.autoApproveReads;
       }

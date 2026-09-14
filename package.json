@@ -1,8 +1,8 @@
 {
   "name": "forge-agent",
   "displayName": "Forge Agent",
-  "description": "Agentic coding assistant with BYOK \u2014 OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.15.0",
+  "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
+  "version": "0.15.1",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"
@@ -80,7 +80,7 @@
       },
       {
         "command": "forgeAgent.cycleAutonomy",
-        "title": "Forge Agent: Cycle Mode (Chat/Plan/Agent/Auto)",
+        "title": "Forge Agent: Cycle Mode (Ask/Plan/Agent/Auto)",
         "icon": "$(shield)"
       },
       {
@@ -227,7 +227,7 @@
           ],
           "enumDescriptions": [
             "OpenAI oficial (api.openai.com)",
-            "Qualquer endpoint /v1/chat/completions (OpenRouter, Groq, Azure, proxies\u2026)",
+            "Qualquer endpoint /v1/chat/completions (OpenRouter, Groq, Azure, proxies…)",
             "Ollama local ou remoto (/api/chat)",
             "Anthropic Claude",
             "Google Gemini"
@@ -243,12 +243,12 @@
         "forgeAgent.baseUrl": {
           "type": "string",
           "default": "",
-          "description": "Base URL. Obrigat\u00f3ria para openai-compatible. Defaults: OpenAI api.openai.com/v1, Ollama http://localhost:11434, Anthropic api.anthropic.com, Gemini generativelanguage.googleapis.com/v1beta."
+          "description": "Base URL. Obrigatória para openai-compatible. Defaults: OpenAI api.openai.com/v1, Ollama http://localhost:11434, Anthropic api.anthropic.com, Gemini generativelanguage.googleapis.com/v1beta."
         },
         "forgeAgent.tlsInsecure": {
           "type": "boolean",
           "default": false,
-          "description": "Desabilita verifica\u00e7\u00e3o do certificado TLS (self-signed / proxy corporativo). Use principalmente com openai-compatible em HTTPS interno."
+          "description": "Desabilita verificação do certificado TLS (self-signed / proxy corporativo). Use principalmente com openai-compatible em HTTPS interno."
         },
         "forgeAgent.autonomy": {
           "type": "string",
@@ -259,20 +259,20 @@
             "auto"
           ],
           "enumDescriptions": [
-            "Chat \u2014 conversa sem tools (s\u00f3 leitura)",
-            "Plan \u2014 investiga e gera um plano Markdown",
-            "Agent \u2014 writes via diff com aprova\u00e7\u00e3o",
-            "Auto \u2014 aplica writes automaticamente (terminal ainda pode pedir aprova\u00e7\u00e3o)"
+            "Ask — perguntas sobre o repo com tools de leitura (sem editar)",
+            "Plan — investiga e gera um plano Markdown",
+            "Agent — writes via diff com aprovação",
+            "Auto — aplica writes automaticamente (terminal ainda pode pedir aprovação)"
           ],
           "default": "agent",
-          "description": "Modo do chat: Chat / Plan / Agent / Auto (como Continue)."
+          "description": "Modo do chat: Ask / Plan / Agent / Auto."
         },
         "forgeAgent.maxToolRounds": {
           "type": "number",
           "default": 25,
           "minimum": 1,
           "maximum": 100,
-          "description": "M\u00e1ximo de rounds de tools por mensagem do usu\u00e1rio."
+          "description": "Máximo de rounds de tools por mensagem do usuário."
         },
         "forgeAgent.autoApproveReads": {
           "type": "boolean",
@@ -282,17 +282,17 @@
         "forgeAgent.requireApprovalForWrites": {
           "type": "boolean",
           "default": true,
-          "description": "Pedir aprova\u00e7\u00e3o antes de write_file / apply_edit."
+          "description": "Pedir aprovação antes de write_file / apply_edit."
         },
         "forgeAgent.requireApprovalForTerminal": {
           "type": "boolean",
           "default": true,
-          "description": "Pedir aprova\u00e7\u00e3o antes de run_terminal."
+          "description": "Pedir aprovação antes de run_terminal."
         },
         "forgeAgent.systemPromptExtra": {
           "type": "string",
           "default": "",
-          "description": "Instru\u00e7\u00f5es extras anexadas ao system prompt do agent."
+          "description": "Instruções extras anexadas ao system prompt do agent."
         },
         "forgeAgent.temperature": {
           "type": "number",
