@@ -127,15 +127,17 @@ export class SettingsPanel {
         await this.profileStore.setActive(id);
         await this.onChanged();
         await this.pushState();
+        await this.fetchAndPostModels({ profileId: id, autoSelect: false });
         break;
       }
       case "createProfile": {
         const provider = (String(msg.provider ?? "openai") || "openai") as ProviderId;
+        const requestedModel = String(msg.model ?? "").trim();
         const profile: ProviderProfile = {
           id: newProfileId(),
           name: String(msg.name ?? "").trim() || labelFor(provider),
           provider,
-          model: String(msg.model ?? "").trim() || defaultModel(provider),
+          model: requestedModel || defaultModel(provider),
           baseUrl: String(msg.baseUrl ?? "").replace(/\/$/, "") || defaultBaseUrl(provider),
           tlsInsecure: Boolean(msg.tlsInsecure),
         };
@@ -148,7 +150,30 @@ export class SettingsPanel {
         }
         await this.onChanged();
         await this.pushState();
-        this.post({ type: "toast", text: `Perfil “${profile.name}” criado.`, level: "ok" });
+        const models = await this.fetchAndPostModels({
+          profileId: profile.id,
+          autoSelect: !requestedModel,
+        });
+        if (!requestedModel && models[0]) {
+          profile.model = models[0].id;
+          await this.profileStore.upsert(profile);
+          await syncSettingsFromProfile(profile);
+          await this.pushState();
+          this.post({
+            type: "models",
+            profileId: profile.id,
+            models,
+            selected: profile.model,
+            autoSelect: false,
+          });
+        }
+        this.post({
+          type: "toast",
+          text: models.length
+            ? `Perfil “${profile.name}” criado. Selecione o modelo.`
+            : `Perfil “${profile.name}” criado.`,
+          level: "ok",
+        });
         break;
       }
       case "saveProfile": {
@@ -160,11 +185,12 @@ export class SettingsPanel {
         }
         const provider = (String(msg.provider ?? existing.provider) ||
           existing.provider) as ProviderId;
+        const requestedModel = String(msg.model ?? existing.model).trim();
         const updated: ProviderProfile = {
           id,
           name: String(msg.name ?? existing.name).trim() || existing.name,
           provider,
-          model: String(msg.model ?? existing.model).trim() || defaultModel(provider),
+          model: requestedModel || defaultModel(provider),
           baseUrl:
             String(msg.baseUrl ?? existing.baseUrl).replace(/\/$/, "") ||
             defaultBaseUrl(provider),
@@ -181,6 +207,7 @@ export class SettingsPanel {
         }
         await this.onChanged();
         await this.pushState();
+        await this.fetchAndPostModels({ profileId: id, autoSelect: false });
         this.post({ type: "toast", text: "Perfil salvo.", level: "ok" });
         break;
       }
@@ -212,29 +239,31 @@ export class SettingsPanel {
         this.post({ type: "toast", text: "API key removida.", level: "ok" });
         break;
       }
-      case "listModels": {
-        const id = String(msg.id ?? "");
-        const profile = this.profileStore.get(id) ?? this.profileStore.active();
-        if (!profile) break;
-        const apiKey =
-          (await this.keyStore.getForProfile(profile.id, profile.provider)) ?? "";
-        try {
-          const models = await listModels({
-            provider: profile.provider,
-            apiKey,
-            baseUrl: profile.baseUrl,
-            tlsInsecure: profile.tlsInsecure,
-          });
-          this.post({ type: "models", profileId: profile.id, models });
-        } catch (e) {
-          const err = e instanceof Error ? e.message : String(e);
-          this.post({
-            type: "toast",
-            text: `Falha ao listar modelos: ${err}`,
-            level: "error",
-          });
-          this.post({ type: "models", profileId: profile.id, models: [] });
+      case "listModels":
+      case "fetchModels": {
+        await this.fetchAndPostModels({
+          profileId: String(msg.profileId ?? msg.id ?? "") || undefined,
+          provider: msg.provider ? (String(msg.provider) as ProviderId) : undefined,
+          baseUrl: msg.baseUrl != null ? String(msg.baseUrl) : undefined,
+          tlsInsecure: msg.tlsInsecure != null ? Boolean(msg.tlsInsecure) : undefined,
+          apiKey: msg.apiKey != null ? String(msg.apiKey) : undefined,
+          autoSelect: Boolean(msg.autoSelect),
+          selected: msg.selected != null ? String(msg.selected) : undefined,
+        });
+        break;
+      }
+      case "setModel": {
+        const id = String(msg.profileId ?? msg.id ?? "");
+        const model = String(msg.model ?? "").trim();
+        const profile = this.profileStore.get(id);
+        if (!profile || !model) break;
+        profile.model = model;
+        await this.profileStore.upsert(profile);
+        if (this.profileStore.active()?.id === id) {
+          await syncSettingsFromProfile(profile);
         }
+        await this.onChanged();
+        await this.pushState();
         break;
       }
       case "saveAgent": {
@@ -291,6 +320,79 @@ export class SettingsPanel {
     }
   }
 
+  private async fetchAndPostModels(opts: {
+    profileId?: string;
+    provider?: ProviderId;
+    baseUrl?: string;
+    tlsInsecure?: boolean;
+    apiKey?: string;
+    autoSelect?: boolean;
+    selected?: string;
+  }): Promise<Array<{ id: string; label: string; detail?: string }>> {
+    const profile = opts.profileId
+      ? this.profileStore.get(opts.profileId)
+      : this.profileStore.active();
+    const provider = (opts.provider ?? profile?.provider ?? "openai") as ProviderId;
+    const baseUrl =
+      (opts.baseUrl ?? profile?.baseUrl ?? "").replace(/\/$/, "") || defaultBaseUrl(provider);
+    const tlsInsecure = opts.tlsInsecure ?? profile?.tlsInsecure ?? false;
+    let apiKey = (opts.apiKey ?? "").trim();
+    if (!apiKey && profile) {
+      apiKey = (await this.keyStore.getForProfile(profile.id, provider)) ?? "";
+    }
+    if (providerRequiresApiKey(provider) && !apiKey) {
+      this.post({
+        type: "models",
+        profileId: profile?.id,
+        models: [],
+        selected: opts.selected ?? profile?.model,
+        status: "missing-key",
+      });
+      return [];
+    }
+    this.post({
+      type: "modelsStatus",
+      status: "loading",
+      profileId: profile?.id,
+    });
+    try {
+      const models = await listModels({
+        provider,
+        apiKey,
+        baseUrl,
+        tlsInsecure,
+      });
+      let selected = opts.selected ?? profile?.model ?? "";
+      if (opts.autoSelect && models.length && !models.some((m) => m.id === selected)) {
+        selected = models[0].id;
+      }
+      this.post({
+        type: "models",
+        profileId: profile?.id,
+        models,
+        selected,
+        autoSelect: Boolean(opts.autoSelect),
+        status: "ok",
+      });
+      return models;
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.post({
+        type: "toast",
+        text: `Falha ao listar modelos: ${err}`,
+        level: "error",
+      });
+      this.post({
+        type: "models",
+        profileId: profile?.id,
+        models: [],
+        selected: opts.selected ?? profile?.model,
+        status: "error",
+      });
+      return [];
+    }
+  }
+
   private getHtml(webview: vscode.Webview): string {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "media", "webview", "settings.css")
@@ -342,14 +444,6 @@ export class SettingsPanel {
               <select id="provider"></select>
             </label>
             <label>
-              <span>Modelo</span>
-              <div class="row">
-                <input id="model" type="text" required />
-                <button id="btnListModels" class="ghost" type="button">Listar</button>
-              </div>
-            </label>
-            <div id="modelPicker" class="model-picker hidden"></div>
-            <label>
               <span>Base URL</span>
               <input id="baseUrl" type="text" placeholder="https://api.openai.com/v1" />
             </label>
@@ -359,7 +453,16 @@ export class SettingsPanel {
             </label>
             <label>
               <span>API key <em id="keyStatus"></em></span>
-              <input id="apiKey" type="password" autocomplete="off" placeholder="Cole uma nova key para salvar" />
+              <input id="apiKey" type="password" autocomplete="off" placeholder="Cole a key do provedor" />
+            </label>
+            <label>
+              <span>Modelo <em id="modelStatus"></em></span>
+              <div class="row">
+                <select id="model" required>
+                  <option value="">Preencha a key para listar…</option>
+                </select>
+                <button id="btnListModels" class="ghost" type="button">Atualizar</button>
+              </div>
             </label>
             <div class="actions">
               <button id="btnSaveProfile" class="primary" type="submit">Salvar perfil</button>

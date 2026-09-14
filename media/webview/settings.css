@@ -229,20 +229,19 @@ button:disabled {
 }
 
 .model-picker {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 6px;
-  max-height: 180px;
-  overflow: auto;
-  padding: 8px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
+  display: none;
 }
 
-.model-picker button {
-  text-align: left;
-  font-size: 12px;
-  padding: 6px 8px;
+select#model {
+  width: 100%;
+}
+
+#modelStatus, #keyStatus {
+  font-style: normal;
+  color: var(--muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .hidden { display: none !important; }
