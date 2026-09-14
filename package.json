@@ -203,5 +203,13 @@
     "@vscode/vsce": "^3.2.0",
     "typescript": "^5.4.0"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raulaguila/forge-agent.git"
+  },
+  "homepage": "https://github.com/raulaguila/forge-agent#readme",
+  "bugs": {
+    "url": "https://github.com/raulaguila/forge-agent/issues"
+  }
 }
