@@ -12,6 +12,7 @@
   const btnMode = document.getElementById("btnMode");
   const btnHistory = document.getElementById("btnHistory");
   const btnUndo = document.getElementById("btnUndo");
+  const btnSettings = document.getElementById("btnSettings");
   const btnProvider = document.getElementById("btnProvider");
   const btnModel = document.getElementById("btnModel");
 
@@ -205,7 +206,12 @@
   btnSend.addEventListener("click", send);
   btnStop.addEventListener("click", () => vscode.postMessage({ type: "stop" }));
   btnNew.addEventListener("click", () => vscode.postMessage({ type: "newChat" }));
-  btnKey.addEventListener("click", () => vscode.postMessage({ type: "setApiKey" }));
+  btnKey.addEventListener("click", () => vscode.postMessage({ type: "openSettings" }));
+  if (btnSettings) {
+    btnSettings.addEventListener("click", () =>
+      vscode.postMessage({ type: "openSettings" })
+    );
+  }
   if (btnMode) {
     btnMode.addEventListener("click", () =>
       vscode.postMessage({ type: "cycleAutonomy" })
@@ -223,7 +229,7 @@
   }
   if (btnProvider) {
     btnProvider.addEventListener("click", () =>
-      vscode.postMessage({ type: "switchProfile" })
+      vscode.postMessage({ type: "openSettings" })
     );
   }
   if (btnModel) {

@@ -60,17 +60,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: "cleared" });
           break;
         case "setApiKey":
-          await this.setApiKeyForActive();
-          await this.pushConfig();
-          break;
         case "switchProfile":
-          await this.switchProfile();
+        case "manageProfiles":
+        case "openSettings":
+          await vscode.commands.executeCommand("forgeAgent.openSettings");
           break;
         case "pickModel":
           await this.pickModel();
-          break;
-        case "manageProfiles":
-          await this.manageProfiles();
           break;
         case "cycleAutonomy":
           await this.cycleAutonomyMode();
@@ -537,7 +533,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </div>
       </div>
       <div class="actions">
-        <button id="btnProvider" class="ghost" title="Trocar perfil / provedor">Perfil</button>
+        <button id="btnSettings" class="ghost" title="Abrir configuração">Config</button>
+        <button id="btnProvider" class="ghost" title="Perfis / provedores">Perfil</button>
         <button id="btnModel" class="ghost" title="Listar modelos do provedor ativo">Model</button>
         <button id="btnMode" class="ghost mode" title="Ciclar modo ask / plan / agent / auto">agent</button>
         <button id="btnHistory" class="ghost" title="Histórico">Hist</button>

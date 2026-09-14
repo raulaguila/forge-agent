@@ -39,15 +39,11 @@ Alterar: botão de modo no header do chat, command **Forge Agent: Cycle Autonomy
 
 ## Configurar BYOK
 
-1. Command Palette → **Forge Agent: Set API Key (BYOK)**
-2. Escolha o provedor e cole a key (fica no `SecretStorage`, não no `settings.json`)
-3. Use **Switch Provider Profile** / botão **Perfil** para registrar vários provedores (OpenAI + Anthropic + Ollama…)
-4. Use **Pick Model** / botão **Model** para listar **somente os modelos do perfil ativo**
-5. Settings úteis (espelhados pelo perfil ativo):
-   - `forgeAgent.provider` — `openai` \| `openai-compatible` \| `ollama` \| `anthropic` \| `gemini`
-   - `forgeAgent.model` — ex. `gpt-4o`, `claude-sonnet-4-20250514`, `gemini-2.0-flash`, `llama3.1`
-   - `forgeAgent.baseUrl` — obrigatório para `openai-compatible`
-   - `forgeAgent.tlsInsecure` — `true` para HTTPS com certificado self-signed (proxies corporativos)
+1. Command Palette → **Forge Agent: Open Settings** (ou botão **Config** no chat)
+2. Crie/ative um perfil, escolha provedor, base URL, modelo e cole a API key no formulário
+3. Ajuste autonomia, aprovações, temperature e system prompt na mesma tela
+4. Keys ficam no `SecretStorage` (nunca no `settings.json`)
+5. Settings ainda espelham o perfil ativo (`forgeAgent.provider`, `model`, `baseUrl`, `tlsInsecure`, …)
 
 ### Exemplos
 
@@ -132,4 +128,5 @@ media/                  # ícone + assets do webview
 - [x] Memória/regras por projeto (`.forge/rules.md`)
 - [x] Modo plano → execução
 - [x] Multi-provider profiles + model picker
+- [x] Settings UI (perfis / keys / agent) sem QuickPicks
 - [ ] MCP tools
