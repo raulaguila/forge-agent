@@ -123,3 +123,72 @@ export async function httpJson(
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
+
+/** Stream response body as UTF-8 text chunks (SSE / NDJSON). */
+export async function* httpStreamText(
+  url: string,
+  opts: HttpJsonOptions = {}
+): AsyncGenerator<string> {
+  const method = opts.method ?? "POST";
+  const payload =
+    opts.body === undefined ? undefined : Buffer.from(JSON.stringify(opts.body), "utf8");
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream, application/json",
+    ...(opts.headers ?? {}),
+  };
+  if (payload) {
+    headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+    headers["Content-Length"] = String(payload.length);
+  }
+
+  const res = await new Promise<IncomingMessage>((resolve, reject) => {
+    const u = new URL(url);
+    const isHttps = u.protocol === "https:";
+    const lib = isHttps ? https : http;
+    const req = lib.request(
+      {
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port || (isHttps ? 443 : 80),
+        path: `${u.pathname}${u.search}`,
+        method,
+        headers,
+        ...(isHttps ? { rejectUnauthorized: !opts.tlsInsecure } : {}),
+      },
+      (r) => resolve(r)
+    );
+    const timeoutMs = opts.timeoutMs ?? 180_000;
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`Timeout após ${timeoutMs}ms`)));
+    const onAbort = () => req.destroy(new Error("Aborted"));
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        onAbort();
+        return;
+      }
+      opts.signal.addEventListener("abort", onAbort, { once: true });
+    }
+    req.on("error", reject);
+    if (payload) {
+      req.write(payload);
+    }
+    req.end();
+  });
+
+  if ((res.statusCode ?? 0) >= 400) {
+    const raw = await readBody(res);
+    let msg = raw;
+    try {
+      msg = JSON.parse(raw)?.error?.message || JSON.parse(raw)?.message || raw;
+    } catch {
+      // keep raw
+    }
+    throw new Error(typeof msg === "string" ? msg : `HTTP ${res.statusCode}`);
+  }
+
+  let pending = "";
+  for await (const chunk of res) {
+    pending += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+    yield pending;
+    pending = "";
+  }
+}

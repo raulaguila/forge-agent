@@ -117,19 +117,24 @@ export class AgentSession {
           return;
         }
 
-        const { message, finishReason } = await this.provider.complete({
+        const { message, finishReason, usage } = await this.provider.complete({
           model: this.config.model,
           messages: this.messages,
           tools: toolDefinitions(this.registry),
           temperature: this.config.temperature,
           signal,
+          onDelta: (text) => {
+            this.onEvent({ type: "assistant_delta", text });
+          },
         });
 
         this.messages.push(message);
 
         if (message.content) {
-          this.onEvent({ type: "assistant_delta", text: message.content });
           this.onEvent({ type: "assistant_done", text: message.content });
+        }
+        if (usage) {
+          this.onEvent({ type: "usage", usage });
         }
 
         if (finishReason !== "tool_calls" || !message.toolCalls?.length) {

@@ -302,6 +302,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     </header>
     <main id="messages"></main>
     <section id="approval" class="approval hidden"></section>
+    <div id="usage" class="usage hidden"></div>
     <footer class="composer">
       <div class="composer-wrap">
         <div id="mentionPopup" class="mention-popup hidden"></div>

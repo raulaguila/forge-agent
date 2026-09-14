@@ -3,16 +3,40 @@ import type {
   CompletionRequest,
   LlmProvider,
   ProviderId,
+  TokenUsage,
   ToolCall,
   ToolDefinition,
 } from "../types";
-import { httpJson } from "./http";
+import { httpJson, httpStreamText } from "./http";
+import { estimateCostUsd } from "./usage";
 
 export interface ProviderCreateOptions {
   provider: ProviderId;
   apiKey: string;
   baseUrl: string;
   tlsInsecure: boolean;
+}
+
+function usageFromOpenAi(body: any, model: string): TokenUsage | undefined {
+  const u = body?.usage;
+  if (!u) {
+    return undefined;
+  }
+  const inputTokens = Number(u.prompt_tokens ?? u.input_tokens ?? 0);
+  const outputTokens = Number(u.completion_tokens ?? u.output_tokens ?? 0);
+  const totalTokens = Number(u.total_tokens ?? inputTokens + outputTokens);
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    estimatedCostUsd: estimateCostUsd(model, inputTokens, outputTokens),
+  };
+}
+
+function emitFullDelta(req: CompletionRequest, text: string): void {
+  if (text && req.onDelta) {
+    req.onDelta(text);
+  }
 }
 
 function toOpenAiMessages(messages: ChatMessage[]): unknown[] {
@@ -106,6 +130,11 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       headers.Authorization = `Bearer ${this.apiKey}`;
     }
 
+    const useStream = Boolean(req.onDelta);
+    if (useStream) {
+      return this.completeStream(url, headers, req);
+    }
+
     const { status, body } = await httpJson(url, {
       method: "POST",
       headers,
@@ -126,7 +155,110 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       throw new Error(msg);
     }
 
-    return parseOpenAiResponse(body);
+    const parsed = parseOpenAiResponse(body);
+    return { ...parsed, usage: usageFromOpenAi(body, req.model) };
+  }
+
+  private async completeStream(
+    url: string,
+    headers: Record<string, string>,
+    req: CompletionRequest
+  ) {
+    let content = "";
+    const toolAcc = new Map<
+      number,
+      { id: string; name: string; arguments: string }
+    >();
+    let finishReason: "stop" | "tool_calls" | "length" = "stop";
+    let usage: TokenUsage | undefined;
+    let buffer = "";
+
+    for await (const chunk of httpStreamText(url, {
+      method: "POST",
+      headers,
+      body: {
+        model: req.model,
+        messages: toOpenAiMessages(req.messages),
+        tools: req.tools.length ? toOpenAiTools(req.tools) : undefined,
+        tool_choice: req.tools.length ? "auto" : undefined,
+        temperature: req.temperature,
+        stream: true,
+        stream_options: { include_usage: true },
+      },
+      signal: req.signal,
+      tlsInsecure: this.tlsInsecure,
+    })) {
+      buffer += chunk;
+      const parts = buffer.split("\n");
+      buffer = parts.pop() ?? "";
+      for (const line of parts) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) {
+          continue;
+        }
+        const data = trimmed.slice(5).trim();
+        if (!data || data === "[DONE]") {
+          continue;
+        }
+        let json: any;
+        try {
+          json = JSON.parse(data);
+        } catch {
+          continue;
+        }
+        if (json.usage) {
+          usage = usageFromOpenAi(json, req.model);
+        }
+        const choice = json.choices?.[0];
+        const delta = choice?.delta;
+        if (typeof delta?.content === "string" && delta.content) {
+          content += delta.content;
+          req.onDelta?.(delta.content);
+        }
+        if (Array.isArray(delta?.tool_calls)) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0;
+            const cur = toolAcc.get(idx) ?? { id: "", name: "", arguments: "" };
+            if (tc.id) {
+              cur.id = tc.id;
+            }
+            if (tc.function?.name) {
+              cur.name += tc.function.name;
+            }
+            if (tc.function?.arguments) {
+              cur.arguments += tc.function.arguments;
+            }
+            toolAcc.set(idx, cur);
+          }
+        }
+        if (choice?.finish_reason === "tool_calls") {
+          finishReason = "tool_calls";
+        } else if (choice?.finish_reason === "length") {
+          finishReason = "length";
+        }
+      }
+    }
+
+    const toolCalls = [...toolAcc.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, t]) => ({
+        id: t.id || `call_${Math.random().toString(36).slice(2, 10)}`,
+        name: t.name,
+        arguments: t.arguments || "{}",
+      }));
+    if (toolCalls.length) {
+      finishReason = "tool_calls";
+    }
+
+    return {
+      message: {
+        role: "assistant" as const,
+        content,
+        toolCalls: toolCalls.length ? toolCalls : undefined,
+      },
+      finishReason,
+      usage,
+    };
   }
 }
 
@@ -197,11 +329,22 @@ export class OllamaProvider implements LlmProvider {
       toolCalls: toolCalls?.length ? toolCalls : undefined,
     };
 
+    emitFullDelta(req, message.content);
+
     return {
       message,
       finishReason: (toolCalls?.length ? "tool_calls" : "stop") as
         | "tool_calls"
         | "stop",
+      usage: body?.prompt_eval_count
+        ? {
+            inputTokens: Number(body.prompt_eval_count ?? 0),
+            outputTokens: Number(body.eval_count ?? 0),
+            totalTokens:
+              Number(body.prompt_eval_count ?? 0) + Number(body.eval_count ?? 0),
+            estimatedCostUsd: 0,
+          }
+        : undefined,
     };
   }
 }
@@ -334,7 +477,27 @@ export class AnthropicProvider implements LlmProvider {
           ? "length"
           : "stop";
 
-    return { message, finishReason: finish as "stop" | "tool_calls" | "length" };
+    emitFullDelta(req, message.content);
+    const usage = body?.usage
+      ? {
+          inputTokens: Number(body.usage.input_tokens ?? 0),
+          outputTokens: Number(body.usage.output_tokens ?? 0),
+          totalTokens:
+            Number(body.usage.input_tokens ?? 0) +
+            Number(body.usage.output_tokens ?? 0),
+          estimatedCostUsd: estimateCostUsd(
+            req.model,
+            Number(body.usage.input_tokens ?? 0),
+            Number(body.usage.output_tokens ?? 0)
+          ),
+        }
+      : undefined;
+
+    return {
+      message,
+      finishReason: finish as "stop" | "tool_calls" | "length",
+      usage,
+    };
   }
 }
 
@@ -502,9 +665,25 @@ export class GeminiProvider implements LlmProvider {
         ? "length"
         : "stop";
 
+    emitFullDelta(req, message.content);
+    const um = body?.usageMetadata;
+    const usage = um
+      ? {
+          inputTokens: Number(um.promptTokenCount ?? 0),
+          outputTokens: Number(um.candidatesTokenCount ?? 0),
+          totalTokens: Number(um.totalTokenCount ?? 0),
+          estimatedCostUsd: estimateCostUsd(
+            req.model,
+            Number(um.promptTokenCount ?? 0),
+            Number(um.candidatesTokenCount ?? 0)
+          ),
+        }
+      : undefined;
+
     return {
       message,
       finishReason: finish as "stop" | "tool_calls" | "length",
+      usage,
     };
   }
 }

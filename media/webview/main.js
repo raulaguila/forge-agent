@@ -13,6 +13,8 @@
 
   let busy = false;
   let autonomy = "agent";
+  let streamNode = null;
+  const usageEl = document.getElementById("usage");
   let mentionItems = [];
   let mentionIndex = 0;
   let mentionQueryStart = -1;
@@ -268,9 +270,26 @@
         if (ev.type === "status") {
           appendMessage("status", ev.text || "");
         } else if (ev.type === "assistant_delta") {
-          // reserved for streaming phase
+          ensureList();
+          if (!streamNode) {
+            streamNode = appendMessage("assistant", "", "Forge");
+          }
+          streamNode.appendChild(document.createTextNode(ev.text || ""));
+          messagesEl.scrollTop = messagesEl.scrollHeight;
         } else if (ev.type === "assistant_done") {
-          appendMessage("assistant", ev.text || "", "Forge");
+          if (streamNode) {
+            // streamed already; just finalize
+            streamNode = null;
+          } else if (ev.text) {
+            appendMessage("assistant", ev.text || "", "Forge");
+          }
+        } else if (ev.type === "usage") {
+          if (usageEl && ev.usage) {
+            const u = ev.usage;
+            usageEl.classList.remove("hidden");
+            const cost = u.estimatedCostUsd != null ? ` · ~$${Number(u.estimatedCostUsd).toFixed(4)}` : "";
+            usageEl.textContent = `tokens in ${u.inputTokens} / out ${u.outputTokens} (Σ ${u.totalTokens})${cost}`;
+          }
         } else if (ev.type === "diff_proposal") {
           const d = ev.diff;
           appendMessage(
@@ -289,6 +308,7 @@
         } else if (ev.type === "error") {
           appendMessage("error", ev.text || "Erro", "Erro");
         } else if (ev.type === "done") {
+          streamNode = null;
           setBusy(false);
           hideApproval();
         }

@@ -44,6 +44,15 @@ export interface CompletionRequest {
   tools: ToolDefinition[];
   temperature: number;
   signal?: AbortSignal;
+  /** Called with incremental assistant text when provider streams. */
+  onDelta?: (text: string) => void;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd?: number;
 }
 
 export interface LlmProvider {
@@ -51,6 +60,7 @@ export interface LlmProvider {
   complete(req: CompletionRequest): Promise<{
     message: ChatMessage;
     finishReason: "stop" | "tool_calls" | "length" | "error";
+    usage?: TokenUsage;
   }>;
 }
 
@@ -76,6 +86,7 @@ export interface AgentEvent {
     | "tool_request"
     | "tool_result"
     | "diff_proposal"
+    | "usage"
     | "error"
     | "done";
   text?: string;
@@ -85,6 +96,7 @@ export interface AgentEvent {
   result?: string;
   requiresApproval?: boolean;
   diff?: DiffProposal;
+  usage?: TokenUsage;
 }
 
 export interface ForgeConfig {
