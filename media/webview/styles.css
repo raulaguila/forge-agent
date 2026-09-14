@@ -342,3 +342,15 @@ textarea:focus {
   font-size: 13px;
   line-height: 1.5;
 }
+
+.msg.plan {
+  background: #1a2218;
+  border-color: #2e3a28;
+  white-space: pre-wrap;
+}
+
+.msg.plan .row {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}

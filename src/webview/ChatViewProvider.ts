@@ -55,7 +55,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case "setAutonomy": {
           const mode = String(msg.mode ?? "") as AutonomyMode;
-          if (mode === "ask" || mode === "agent" || mode === "auto") {
+          if (mode === "ask" || mode === "plan" || mode === "agent" || mode === "auto") {
             await setAutonomy(mode);
             await this.refreshSessionConfig();
             await this.pushConfig();
@@ -77,8 +77,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: "mentionSuggestions", suggestions });
           break;
         }
-        case "insertText": {
-          this.post({ type: "insertIntoComposer", text: String(msg.text ?? "") });
+        case "executePlan": {
+          const plan = String(msg.plan ?? "");
+          if (!plan.trim()) {
+            break;
+          }
+          await setAutonomy("agent");
+          await this.refreshSessionConfig();
+          await this.pushConfig();
+          await this.handleSend(
+            `Execute este plano aprovado pelo usuário. Siga os passos, use tools e implemente de fato.\n\n${plan}`
+          );
           break;
         }
         default:

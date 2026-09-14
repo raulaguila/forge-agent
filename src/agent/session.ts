@@ -26,9 +26,11 @@ export function buildSystemPrompt(config: ForgeConfig): string {
   const modeHint =
     config.autonomy === "ask"
       ? "Modo ASK: apenas leitura. Não tente editar arquivos nem rodar terminal — explique o plano."
-      : config.autonomy === "auto"
-        ? "Modo AUTO: pode editar arquivos; ainda assim prefira apply_edit e valide com diagnostics."
-        : "Modo AGENT: edições passam por diff/aprovação do usuário antes de gravar.";
+      : config.autonomy === "plan"
+        ? "Modo PLAN: apenas leitura. Investigue o código com tools de leitura e entregue um plano Markdown detalhado (objetivo, passos, arquivos a tocar, riscos). NÃO edite arquivos nem rode terminal."
+        : config.autonomy === "auto"
+          ? "Modo AUTO: pode editar arquivos; ainda assim prefira apply_edit e valide com diagnostics."
+          : "Modo AGENT: edições passam por diff/aprovação do usuário antes de gravar.";
 
   return [
     "Você é o Forge Agent — um coding agent autônomo dentro do VS Code.",
@@ -138,6 +140,9 @@ export class AgentSession {
         }
 
         if (finishReason !== "tool_calls" || !message.toolCalls?.length) {
+          if (this.config.autonomy === "plan" && (message.content || "").trim()) {
+            await this.publishPlan(message.content);
+          }
           this.onEvent({ type: "done" });
           return;
         }
@@ -187,10 +192,11 @@ export class AgentSession {
     }
 
     if (
-      this.config.autonomy === "ask" &&
-      (tool.risk === "write" || tool.risk === "terminal")
+      this.config.autonomy === "ask" ||
+      this.config.autonomy === "plan"
     ) {
-      const denied = `Bloqueado no modo ask (${tool.risk}). Mude para agent/auto ou explique o plano sem executar.`;
+      if (tool.risk === "write" || tool.risk === "terminal") {
+      const denied = `Bloqueado no modo ${this.config.autonomy} (${tool.risk}).`;
       this.onEvent({
         type: "tool_request",
         toolName: call.name,
@@ -200,6 +206,7 @@ export class AgentSession {
       });
       await this.pushToolResult(call.id, call.name, denied);
       return;
+      }
     }
 
     if (tool.risk === "write" && (call.name === "write_file" || call.name === "apply_edit")) {
@@ -329,6 +336,19 @@ export class AgentSession {
         `ERROR: ${e instanceof Error ? e.message : String(e)}`
       );
     }
+  }
+
+  private async publishPlan(planMarkdown: string): Promise<void> {
+    try {
+      const doc = await vscode.workspace.openTextDocument({
+        language: "markdown",
+        content: `# Forge Agent — Plano\n\n${planMarkdown}\n`,
+      });
+      await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+    } catch {
+      // best-effort
+    }
+    this.onEvent({ type: "plan_ready", plan: planMarkdown, text: planMarkdown });
   }
 
   private async pushToolResult(

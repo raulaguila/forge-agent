@@ -2,7 +2,7 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"
@@ -203,9 +203,10 @@
         },
         "forgeAgent.autonomy": {
           "type": "string",
-          "enum": ["ask", "agent", "auto"],
+          "enum": ["ask", "plan", "agent", "auto"],
           "enumDescriptions": [
             "Somente leitura — bloqueia writes e terminal",
+            "Investiga e gera um plano Markdown para aprovação",
             "Writes abrem diff e pedem aprovação antes de gravar",
             "Aplica writes automaticamente (terminal ainda pode pedir aprovação)"
           ],

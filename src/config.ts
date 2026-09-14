@@ -28,7 +28,7 @@ export async function setAutonomy(mode: AutonomyMode): Promise<void> {
 }
 
 export function cycleAutonomy(current: AutonomyMode): AutonomyMode {
-  const order: AutonomyMode[] = ["ask", "agent", "auto"];
+  const order: AutonomyMode[] = ["ask", "plan", "agent", "auto"];
   const i = order.indexOf(current);
   return order[(i + 1) % order.length];
 }

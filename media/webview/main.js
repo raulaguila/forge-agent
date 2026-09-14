@@ -307,6 +307,20 @@
           appendMessage("tool", (ev.result || "").slice(0, 1200), `${ev.toolName} →`);
         } else if (ev.type === "error") {
           appendMessage("error", ev.text || "Erro", "Erro");
+        } else if (ev.type === "plan_ready") {
+          ensureList();
+          const box = el("div", "msg plan");
+          box.appendChild(el("span", "label", "Plano"));
+          box.appendChild(document.createTextNode((ev.plan || ev.text || "").slice(0, 4000)));
+          const row = el("div", "row");
+          const btn = el("button", "primary", "Executar plano");
+          btn.onclick = () => {
+            vscode.postMessage({ type: "executePlan", plan: ev.plan || ev.text || "" });
+          };
+          row.appendChild(btn);
+          box.appendChild(row);
+          messagesEl.appendChild(box);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
         } else if (ev.type === "done") {
           streamNode = null;
           setBusy(false);

@@ -5,8 +5,8 @@ export type ProviderId =
   | "anthropic"
   | "gemini";
 
-/** ask = só leitura; agent = writes via diff+approve; auto = aplica writes sem pedir */
-export type AutonomyMode = "ask" | "agent" | "auto";
+/** ask = só leitura; plan = lê e propõe plano; agent = writes via diff+approve; auto = aplica writes */
+export type AutonomyMode = "ask" | "plan" | "agent" | "auto";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -86,6 +86,7 @@ export interface AgentEvent {
     | "tool_request"
     | "tool_result"
     | "diff_proposal"
+    | "plan_ready"
     | "usage"
     | "error"
     | "done";
@@ -97,6 +98,7 @@ export interface AgentEvent {
   requiresApproval?: boolean;
   diff?: DiffProposal;
   usage?: TokenUsage;
+  plan?: string;
 }
 
 export interface ForgeConfig {
