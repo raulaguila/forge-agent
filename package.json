@@ -2,7 +2,7 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"
@@ -101,6 +101,20 @@
         "command": "forgeAgent.openRules",
         "title": "Forge Agent: Open Project Rules (.forge/rules.md)",
         "icon": "$(book)"
+      },
+      {
+        "command": "forgeAgent.switchProfile",
+        "title": "Forge Agent: Switch Provider Profile",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "forgeAgent.pickModel",
+        "title": "Forge Agent: Pick Model (active provider)",
+        "icon": "$(symbol-misc)"
+      },
+      {
+        "command": "forgeAgent.manageProfiles",
+        "title": "Forge Agent: Manage Provider Profiles"
       }
     ],
     "keybindings": [
@@ -174,6 +188,15 @@
         },
         {
           "command": "forgeAgent.openRules"
+        },
+        {
+          "command": "forgeAgent.switchProfile"
+        },
+        {
+          "command": "forgeAgent.pickModel"
+        },
+        {
+          "command": "forgeAgent.manageProfiles"
         }
       ]
     },

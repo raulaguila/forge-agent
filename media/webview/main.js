@@ -12,6 +12,8 @@
   const btnMode = document.getElementById("btnMode");
   const btnHistory = document.getElementById("btnHistory");
   const btnUndo = document.getElementById("btnUndo");
+  const btnProvider = document.getElementById("btnProvider");
+  const btnModel = document.getElementById("btnModel");
 
   let busy = false;
   let autonomy = "agent";
@@ -61,6 +63,12 @@
   function setBusy(v) {
     busy = v;
     btnSend.disabled = v;
+  }
+
+  function shortLabel(text, max) {
+    const t = String(text || "");
+    const limit = max || 12;
+    return t.length > limit ? t.slice(0, limit - 1) + "…" : t;
   }
 
   function setMode(mode) {
@@ -213,6 +221,16 @@
       vscode.postMessage({ type: "undoCheckpoint" })
     );
   }
+  if (btnProvider) {
+    btnProvider.addEventListener("click", () =>
+      vscode.postMessage({ type: "switchProfile" })
+    );
+  }
+  if (btnModel) {
+    btnModel.addEventListener("click", () =>
+      vscode.postMessage({ type: "pickModel" })
+    );
+  }
 
   input.addEventListener("input", detectMention);
   input.addEventListener("keydown", (e) => {
@@ -253,9 +271,16 @@
     switch (msg.type) {
       case "config":
         setMode(msg.autonomy);
-        meta.textContent = `${msg.provider} · ${msg.model} · ${msg.autonomy || "agent"}${
-          msg.hasKey ? "" : " · sem key"
-        }`;
+        if (btnProvider) {
+          btnProvider.textContent = shortLabel(msg.profileName || msg.provider);
+        }
+        if (btnModel) {
+          btnModel.textContent = shortLabel(msg.model, 18);
+          btnModel.title = `Modelo ativo: ${msg.model} (só do provedor selecionado)`;
+        }
+        meta.textContent = `${msg.profileName || msg.provider} · ${msg.model} · ${
+          msg.autonomy || "agent"
+        }${msg.hasKey ? "" : " · sem key"}`;
         break;
       case "user":
         appendMessage("user", msg.text, "Você");

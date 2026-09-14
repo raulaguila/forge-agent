@@ -1,15 +1,25 @@
 import * as vscode from "vscode";
 import { KeyStore, promptAndStoreApiKey } from "./secrets/keys";
 import { ChatViewProvider } from "./webview/ChatViewProvider";
-import { readConfig } from "./config";
+import { bindProfileStore, readConfig } from "./config";
 import { selectionAsPrompt } from "./agent/context";
 import { SessionStore } from "./agent/sessions";
 import { openProjectRules } from "./agent/rules";
+import { ProfileStore } from "./agent/profiles";
 
 export function activate(context: vscode.ExtensionContext): void {
   const keyStore = new KeyStore(context.secrets);
   const sessionStore = new SessionStore(context.workspaceState);
-  const chat = new ChatViewProvider(context.extensionUri, keyStore, sessionStore);
+  const profileStore = new ProfileStore(context.globalState);
+  bindProfileStore(profileStore);
+  void profileStore.ensureSeeded();
+
+  const chat = new ChatViewProvider(
+    context.extensionUri,
+    keyStore,
+    sessionStore,
+    profileStore
+  );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chat, {
@@ -28,6 +38,11 @@ export function activate(context: vscode.ExtensionContext): void {
       chat.undoLastCheckpoint()
     ),
     vscode.commands.registerCommand("forgeAgent.openRules", () => openProjectRules()),
+    vscode.commands.registerCommand("forgeAgent.switchProfile", () => chat.switchProfile()),
+    vscode.commands.registerCommand("forgeAgent.pickModel", () => chat.pickModel()),
+    vscode.commands.registerCommand("forgeAgent.manageProfiles", () =>
+      chat.manageProfiles()
+    ),
     vscode.commands.registerCommand("forgeAgent.focusChatInput", () => chat.openChat()),
     vscode.commands.registerCommand("forgeAgent.addSelectionToChat", async () => {
       const ed = vscode.window.activeTextEditor;
@@ -41,14 +56,20 @@ export function activate(context: vscode.ExtensionContext): void {
         `@${rel}\n\`\`\`\n${text}\n\`\`\`\n\n`
       );
     }),
-    vscode.commands.registerCommand("forgeAgent.setApiKey", () =>
-      promptAndStoreApiKey(keyStore)
-    ),
+    vscode.commands.registerCommand("forgeAgent.setApiKey", async () => {
+      await profileStore.ensureSeeded();
+      const config = readConfig();
+      await promptAndStoreApiKey(keyStore, config.provider, config.profileId);
+      await chat.refreshUi();
+    }),
     vscode.commands.registerCommand("forgeAgent.clearApiKey", async () => {
       const config = readConfig();
+      if (config.profileId) {
+        await keyStore.clearForProfile(config.profileId);
+      }
       await keyStore.clear(config.provider);
       void vscode.window.showInformationMessage(
-        `API key removida (${config.provider}).`
+        `API key removida (${config.profileName || config.provider}).`
       );
     }),
     vscode.commands.registerCommand("forgeAgent.explainSelection", async () => {

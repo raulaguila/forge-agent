@@ -101,6 +101,15 @@ export interface AgentEvent {
   plan?: string;
 }
 
+export interface ProviderProfile {
+  id: string;
+  name: string;
+  provider: ProviderId;
+  model: string;
+  baseUrl: string;
+  tlsInsecure: boolean;
+}
+
 export interface ForgeConfig {
   provider: ProviderId;
   model: string;
@@ -113,4 +122,7 @@ export interface ForgeConfig {
   requireApprovalForTerminal: boolean;
   systemPromptExtra: string;
   temperature: number;
+  /** Active named profile, when profiles are configured. */
+  profileId?: string;
+  profileName?: string;
 }

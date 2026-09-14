@@ -35,8 +35,29 @@ export class KeyStore {
     await this.secrets.store(this.keyFor(provider), apiKey.trim());
   }
 
+  async setForProfile(profileId: string, apiKey: string): Promise<void> {
+    await this.secrets.store(`${SECRET_PREFIX}profile.${profileId}`, apiKey.trim());
+  }
+
+  async getForProfile(
+    profileId: string | undefined,
+    provider: ProviderId
+  ): Promise<string | undefined> {
+    if (profileId) {
+      const byProfile = await this.secrets.get(`${SECRET_PREFIX}profile.${profileId}`);
+      if (byProfile) {
+        return byProfile;
+      }
+    }
+    return this.get(provider);
+  }
+
   async clear(provider: ProviderId): Promise<void> {
     await this.secrets.delete(this.keyFor(provider));
+  }
+
+  async clearForProfile(profileId: string): Promise<void> {
+    await this.secrets.delete(`${SECRET_PREFIX}profile.${profileId}`);
   }
 
   async has(provider: ProviderId): Promise<boolean> {
@@ -44,6 +65,14 @@ export class KeyStore {
       return true;
     }
     const v = await this.get(provider);
+    return Boolean(v && v.length > 0);
+  }
+
+  async hasForProfile(profileId: string | undefined, provider: ProviderId): Promise<boolean> {
+    if (!providerRequiresApiKey(provider)) {
+      return true;
+    }
+    const v = await this.getForProfile(profileId, provider);
     return Boolean(v && v.length > 0);
   }
 }
@@ -65,7 +94,8 @@ function placeholderFor(provider: ProviderId): string {
 
 export async function promptAndStoreApiKey(
   keyStore: KeyStore,
-  preferred?: ProviderId
+  preferred?: ProviderId,
+  profileId?: string
 ): Promise<ProviderId | undefined> {
   const provider =
     preferred ??
@@ -131,7 +161,12 @@ export async function promptAndStoreApiKey(
       placeHolder: placeholderFor(provider),
     });
     if (optionalKey) {
+      if (profileId) {
+        await keyStore.setForProfile(profileId, optionalKey);
+      }
       await keyStore.set(provider, optionalKey);
+    } else if (profileId) {
+      await keyStore.clearForProfile(profileId);
     } else {
       await keyStore.clear(provider);
     }
@@ -151,6 +186,9 @@ export async function promptAndStoreApiKey(
     return undefined;
   }
 
+  if (profileId) {
+    await keyStore.setForProfile(profileId, apiKey);
+  }
   await keyStore.set(provider, apiKey);
   void vscode.window.showInformationMessage(`API key salva para ${provider}.`);
   return provider;

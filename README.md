@@ -41,7 +41,9 @@ Alterar: botão de modo no header do chat, command **Forge Agent: Cycle Autonomy
 
 1. Command Palette → **Forge Agent: Set API Key (BYOK)**
 2. Escolha o provedor e cole a key (fica no `SecretStorage`, não no `settings.json`)
-3. Settings úteis:
+3. Use **Switch Provider Profile** / botão **Perfil** para registrar vários provedores (OpenAI + Anthropic + Ollama…)
+4. Use **Pick Model** / botão **Model** para listar **somente os modelos do perfil ativo**
+5. Settings úteis (espelhados pelo perfil ativo):
    - `forgeAgent.provider` — `openai` \| `openai-compatible` \| `ollama` \| `anthropic` \| `gemini`
    - `forgeAgent.model` — ex. `gpt-4o`, `claude-sonnet-4-20250514`, `gemini-2.0-flash`, `llama3.1`
    - `forgeAgent.baseUrl` — obrigatório para `openai-compatible`
@@ -129,5 +131,5 @@ media/                  # ícone + assets do webview
 - [x] Diff preview antes de aplicar edits
 - [x] Memória/regras por projeto (`.forge/rules.md`)
 - [x] Modo plano → execução
-- [ ] Multi-provider profiles + model picker
+- [x] Multi-provider profiles + model picker
 - [ ] MCP tools

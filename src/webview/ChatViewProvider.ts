@@ -1,12 +1,18 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { cycleAutonomy, readConfig, setAutonomy } from "../config";
+import { cycleAutonomy, readConfig, setActiveModel, setAutonomy } from "../config";
 import { createProvider, providerRequiresApiKey } from "../providers";
+import { listModels } from "../providers/models";
 import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
 import { expandUserMessage, suggestMentions } from "../agent/context";
 import { expandSlash, parseSlash, SLASH_COMMANDS } from "../agent/slash";
 import { openProjectRules } from "../agent/rules";
+import {
+  manageProfilesInteractive,
+  ProfileStore,
+  switchProfileInteractive,
+} from "../agent/profiles";
 import { SessionStore, titleFromMessages } from "../agent/sessions";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
 
@@ -21,7 +27,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly keyStore: KeyStore,
-    private readonly sessionStore: SessionStore
+    private readonly sessionStore: SessionStore,
+    private readonly profileStore: ProfileStore
   ) {}
 
   resolveWebviewView(
@@ -39,6 +46,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "ready":
+          await this.profileStore.ensureSeeded();
           await this.pushConfig();
           break;
         case "send":
@@ -52,8 +60,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: "cleared" });
           break;
         case "setApiKey":
-          await promptAndStoreApiKey(this.keyStore);
+          await this.setApiKeyForActive();
           await this.pushConfig();
+          break;
+        case "switchProfile":
+          await this.switchProfile();
+          break;
+        case "pickModel":
+          await this.pickModel();
+          break;
+        case "manageProfiles":
+          await this.manageProfiles();
           break;
         case "cycleAutonomy":
           await this.cycleAutonomyMode();
@@ -185,15 +202,115 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     void vscode.window.setStatusBarMessage(`Forge Agent: modo ${next}`, 2500);
   }
 
+  async switchProfile(): Promise<void> {
+    const profile = await switchProfileInteractive(this.profileStore);
+    if (!profile) return;
+    await this.refreshSessionConfig();
+    await this.pushConfig();
+    void vscode.window.setStatusBarMessage(
+      `Forge Agent: ${profile.name} · ${profile.model}`,
+      3000
+    );
+  }
+
+  async manageProfiles(): Promise<void> {
+    await manageProfilesInteractive(this.profileStore);
+    await this.refreshSessionConfig();
+    await this.pushConfig();
+  }
+
+  async pickModel(): Promise<void> {
+    await this.profileStore.ensureSeeded();
+    const config = readConfig();
+    const apiKey =
+      (await this.keyStore.getForProfile(config.profileId, config.provider)) ?? "";
+    if (providerRequiresApiKey(config.provider) && !apiKey) {
+      this.post({
+        type: "error",
+        text: "Configure a API key do perfil ativo antes de listar modelos.",
+      });
+      await this.setApiKeyForActive();
+      return;
+    }
+
+    let models;
+    try {
+      models = await listModels({
+        provider: config.provider,
+        apiKey,
+        baseUrl: config.baseUrl,
+        tlsInsecure: config.tlsInsecure,
+      });
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(`Não foi possível listar modelos: ${err}`);
+      const manual = await vscode.window.showInputBox({
+        title: `Modelo (${config.profileName || config.provider})`,
+        value: config.model,
+        ignoreFocusOut: true,
+      });
+      if (manual) {
+        await setActiveModel(manual.trim());
+        await this.refreshSessionConfig();
+        await this.pushConfig();
+      }
+      return;
+    }
+
+    if (!models.length) {
+      void vscode.window.showWarningMessage("Nenhum modelo retornado por este provedor.");
+      return;
+    }
+
+    const pick = await vscode.window.showQuickPick(
+      models.map((m) => ({
+        label: m.label,
+        description: m.id === config.model ? "ativo" : undefined,
+        detail: m.detail,
+        id: m.id,
+      })),
+      {
+        title: `Modelos — ${config.profileName || config.provider}`,
+        matchOnDescription: true,
+        matchOnDetail: true,
+      }
+    );
+    if (!pick) return;
+    await setActiveModel(pick.id);
+    await this.refreshSessionConfig();
+    await this.pushConfig();
+  }
+
   async sendPrompt(text: string): Promise<void> {
     await this.openChat();
     await this.handleSend(text);
   }
 
-  /** Insere texto no composer (ex.: seleção do editor). */
   async insertIntoChat(text: string): Promise<void> {
     await this.openChat();
     this.post({ type: "insertIntoComposer", text });
+  }
+
+  async refreshUi(): Promise<void> {
+    await this.refreshSessionConfig();
+    await this.pushConfig();
+  }
+
+  private async setApiKeyForActive(): Promise<void> {
+    await this.profileStore.ensureSeeded();
+    const config = readConfig();
+    await promptAndStoreApiKey(this.keyStore, config.provider, config.profileId);
+    const active = this.profileStore.active();
+    if (active) {
+      const c = vscode.workspace.getConfiguration("forgeAgent");
+      active.provider = c.get("provider", active.provider) as typeof active.provider;
+      active.model = c.get("model", active.model) || active.model;
+      active.baseUrl = (c.get<string>("baseUrl", "") || active.baseUrl).replace(/\/$/, "");
+      active.tlsInsecure = c.get("tlsInsecure", active.tlsInsecure);
+      await this.profileStore.upsert(active);
+      await this.profileStore.setActive(active.id);
+    }
+    await this.refreshSessionConfig();
   }
 
   private post(message: unknown): void {
@@ -202,19 +319,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async pushConfig(): Promise<void> {
     const config = readConfig();
-    const hasKey = await this.keyStore.has(config.provider);
+    const hasKey = await this.keyStore.hasForProfile(config.profileId, config.provider);
     this.post({
       type: "config",
       provider: config.provider,
       model: config.model,
       autonomy: config.autonomy,
       hasKey,
+      profileName: config.profileName || config.provider,
+      profileId: config.profileId,
     });
   }
 
   private async rebuildProvider() {
     const config = readConfig();
-    const key = (await this.keyStore.get(config.provider)) ?? "";
+    const key =
+      (await this.keyStore.getForProfile(config.profileId, config.provider)) ?? "";
     return {
       config,
       provider: createProvider({
@@ -239,15 +359,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async ensureSession(): Promise<AgentSession | undefined> {
+    await this.profileStore.ensureSeeded();
     const config = readConfig();
-    const apiKey = await this.keyStore.get(config.provider);
+    const apiKey = await this.keyStore.getForProfile(config.profileId, config.provider);
     if (providerRequiresApiKey(config.provider) && !apiKey) {
       this.post({
         type: "error",
         text: "Nenhuma API key configurada. Use “Set API Key (BYOK)”.",
       });
-      const chosen = await promptAndStoreApiKey(this.keyStore, config.provider);
-      if (!chosen) {
+      await this.setApiKeyForActive();
+      const cfg2 = readConfig();
+      const again = await this.keyStore.getForProfile(cfg2.profileId, cfg2.provider);
+      if (providerRequiresApiKey(cfg2.provider) && !again) {
         return undefined;
       }
     }
@@ -414,6 +537,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </div>
       </div>
       <div class="actions">
+        <button id="btnProvider" class="ghost" title="Trocar perfil / provedor">Perfil</button>
+        <button id="btnModel" class="ghost" title="Listar modelos do provedor ativo">Model</button>
         <button id="btnMode" class="ghost mode" title="Ciclar modo ask / plan / agent / auto">agent</button>
         <button id="btnHistory" class="ghost" title="Histórico">Hist</button>
         <button id="btnUndo" class="ghost" title="Undo checkpoint">Undo</button>
