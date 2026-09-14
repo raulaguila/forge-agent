@@ -3,10 +3,12 @@ import { KeyStore, promptAndStoreApiKey } from "./secrets/keys";
 import { ChatViewProvider } from "./webview/ChatViewProvider";
 import { readConfig } from "./config";
 import { selectionAsPrompt } from "./agent/context";
+import { SessionStore } from "./agent/sessions";
 
 export function activate(context: vscode.ExtensionContext): void {
   const keyStore = new KeyStore(context.secrets);
-  const chat = new ChatViewProvider(context.extensionUri, keyStore);
+  const sessionStore = new SessionStore(context.workspaceState);
+  const chat = new ChatViewProvider(context.extensionUri, keyStore, sessionStore);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chat, {
@@ -20,6 +22,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("forgeAgent.stopAgent", () => chat.stop()),
     vscode.commands.registerCommand("forgeAgent.cycleAutonomy", () =>
       chat.cycleAutonomyMode()
+    ),
+    vscode.commands.registerCommand("forgeAgent.undoCheckpoint", () =>
+      chat.undoLastCheckpoint()
     ),
     vscode.commands.registerCommand("forgeAgent.focusChatInput", () => chat.openChat()),
     vscode.commands.registerCommand("forgeAgent.addSelectionToChat", async () => {

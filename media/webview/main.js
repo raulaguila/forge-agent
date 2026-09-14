@@ -10,6 +10,8 @@
   const btnNew = document.getElementById("btnNew");
   const btnKey = document.getElementById("btnKey");
   const btnMode = document.getElementById("btnMode");
+  const btnHistory = document.getElementById("btnHistory");
+  const btnUndo = document.getElementById("btnUndo");
 
   let busy = false;
   let autonomy = "agent";
@@ -189,6 +191,16 @@
       vscode.postMessage({ type: "cycleAutonomy" })
     );
   }
+  if (btnHistory) {
+    btnHistory.addEventListener("click", () =>
+      vscode.postMessage({ type: "listSessions" })
+    );
+  }
+  if (btnUndo) {
+    btnUndo.addEventListener("click", () =>
+      vscode.postMessage({ type: "undoCheckpoint" })
+    );
+  }
 
   input.addEventListener("input", detectMention);
   input.addEventListener("keydown", (e) => {
@@ -249,6 +261,28 @@
       case "approval":
         showApproval(msg);
         break;
+      case "sessions": {
+        ensureList();
+        const box = el("div", "msg tool");
+        box.appendChild(el("span", "label", "Histórico"));
+        const list = msg.sessions || [];
+        if (!list.length) {
+          box.appendChild(document.createTextNode("Nenhuma sessão salva."));
+        } else {
+          list.slice(0, 12).forEach((s) => {
+            const row = el("div", "row");
+            const open = el("button", "ghost", s.title || s.id);
+            open.onclick = () => vscode.postMessage({ type: "loadSession", id: s.id });
+            const del = el("button", "ghost danger", "×");
+            del.onclick = () => vscode.postMessage({ type: "deleteSession", id: s.id });
+            row.appendChild(open);
+            row.appendChild(del);
+            box.appendChild(row);
+          });
+        }
+        messagesEl.appendChild(box);
+        break;
+      }
       case "mentionSuggestions":
         mentionItems = msg.suggestions || [];
         mentionIndex = 0;

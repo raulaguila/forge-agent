@@ -5,6 +5,7 @@ import { createProvider, providerRequiresApiKey } from "../providers";
 import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
 import { expandUserMessage, suggestMentions } from "../agent/context";
+import { SessionStore, titleFromMessages } from "../agent/sessions";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -13,10 +14,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private session?: AgentSession;
   private pendingApprovals = new Map<string, { resolve: (ok: boolean) => void }>();
+  private currentSessionId?: string;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly keyStore: KeyStore
+    private readonly keyStore: KeyStore,
+    private readonly sessionStore: SessionStore
   ) {}
 
   resolveWebviewView(
@@ -77,6 +80,50 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: "mentionSuggestions", suggestions });
           break;
         }
+        case "listSessions": {
+          this.post({
+            type: "sessions",
+            sessions: this.sessionStore.list().map((s) => ({
+              id: s.id,
+              title: s.title,
+              updatedAt: s.updatedAt,
+            })),
+          });
+          break;
+        }
+        case "loadSession": {
+          const id = String(msg.id ?? "");
+          const saved = this.sessionStore.get(id);
+          if (!saved) break;
+          this.currentSessionId = saved.id;
+          const sess = await this.ensureSession();
+          sess?.loadMessages(saved.messages);
+          this.post({ type: "cleared" });
+          for (const m of saved.messages) {
+            if (m.role === "user") this.post({ type: "user", text: m.content });
+            if (m.role === "assistant" && m.content) {
+              this.post({ type: "agent", event: { type: "assistant_done", text: m.content } });
+            }
+          }
+          break;
+        }
+        case "deleteSession": {
+          await this.sessionStore.remove(String(msg.id ?? ""));
+          this.post({
+            type: "sessions",
+            sessions: this.sessionStore.list().map((s) => ({
+              id: s.id,
+              title: s.title,
+              updatedAt: s.updatedAt,
+            })),
+          });
+          break;
+        }
+        case "undoCheckpoint": {
+          const result = (await this.session?.checkpoints.restore()) ?? "Sem sessão.";
+          this.post({ type: "agent", event: { type: "status", text: result } });
+          break;
+        }
         case "executePlan": {
           const plan = String(msg.plan ?? "");
           if (!plan.trim()) {
@@ -102,6 +149,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   async newChat(): Promise<void> {
     this.session?.clear();
+    this.session?.checkpoints.clear();
+    this.currentSessionId = undefined;
     this.post({ type: "cleared" });
   }
 
@@ -270,6 +319,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     const expanded = await expandUserMessage(trimmed);
     await session.run(expanded);
+    await this.persistSession();
+  }
+
+  private async persistSession(): Promise<void> {
+    if (!this.session) return;
+    const messages = this.session.history;
+    if (!messages.length) return;
+    const existing = this.currentSessionId
+      ? this.sessionStore.get(this.currentSessionId)
+      : undefined;
+    const saved = existing ?? this.sessionStore.createEmpty();
+    saved.messages = messages;
+    saved.updatedAt = Date.now();
+    saved.title = titleFromMessages(messages);
+    this.currentSessionId = saved.id;
+    await this.sessionStore.save(saved);
+  }
+
+  async undoLastCheckpoint(): Promise<void> {
+    const result = (await this.session?.checkpoints.restore()) ?? "Sem checkpoint.";
+    void vscode.window.showInformationMessage(result);
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -303,7 +373,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </div>
       </div>
       <div class="actions">
-        <button id="btnMode" class="ghost mode" title="Ciclar modo ask / agent / auto">agent</button>
+        <button id="btnMode" class="ghost mode" title="Ciclar modo ask / plan / agent / auto">agent</button>
+        <button id="btnHistory" class="ghost" title="Histórico">Hist</button>
+        <button id="btnUndo" class="ghost" title="Undo checkpoint">Undo</button>
         <button id="btnKey" class="ghost" title="API Key">Key</button>
         <button id="btnNew" class="ghost" title="Novo chat">New</button>
         <button id="btnStop" class="ghost danger" title="Parar">Stop</button>

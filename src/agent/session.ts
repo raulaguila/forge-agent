@@ -15,6 +15,7 @@ import {
   cleanupTemp,
   showDiffProposal,
 } from "./diff";
+import { CheckpointStore } from "./checkpoints";
 import { createToolRegistry, toolDefinitions, type RegisteredTool } from "./tools";
 
 export function buildSystemPrompt(config: ForgeConfig): string {
@@ -67,6 +68,7 @@ export class AgentSession {
   private messages: ChatMessage[] = [];
   private registry: Map<string, RegisteredTool>;
   private abort?: AbortController;
+  readonly checkpoints = new CheckpointStore();
 
   constructor(
     private provider: LlmProvider,
@@ -80,6 +82,14 @@ export class AgentSession {
 
   get history(): ChatMessage[] {
     return this.messages.filter((m) => m.role !== "system");
+  }
+
+  loadMessages(messages: ChatMessage[]): void {
+    this.stop();
+    this.messages = [
+      { role: "system", content: buildSystemPrompt(this.config) },
+      ...messages.filter((m) => m.role !== "system"),
+    ];
   }
 
   get autonomy(): AutonomyMode {
@@ -327,6 +337,10 @@ export class AgentSession {
     }
 
     try {
+      await this.checkpoints.snapshotBeforeWrite(
+        proposal.path,
+        `${call.name} ${proposal.path}`
+      );
       const output = await applyDiffProposal(proposal);
       await this.pushToolResult(call.id, call.name, output);
     } catch (e) {
