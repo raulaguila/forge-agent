@@ -60,15 +60,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.session?.clear();
           this.post({ type: "cleared" });
           break;
+        case "openSettings":
+          this.post({ type: "showSettings" });
+          break;
         case "setApiKey":
+          await this.setApiKeyForActive();
+          await this.pushConfig();
+          break;
         case "switchProfile":
         case "manageProfiles":
-        case "openSettings":
-          await vscode.commands.executeCommand("forgeAgent.openSettings");
+          await this.manageProfiles();
+          await this.pushConfig();
           break;
         case "pickModel":
           await this.pickModel();
           break;
+        case "listModels":
+          await this.pushModels();
+          break;
+        case "selectModel": {
+          const model = String(msg.model ?? "").trim();
+          if (model) {
+            await setActiveModel(model);
+            await this.refreshSessionConfig();
+            await this.pushConfig();
+          }
+          break;
+        }
         case "cycleAutonomy":
           await this.cycleAutonomyMode();
           break;
@@ -314,6 +332,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage(message);
   }
 
+  showSettings(): void {
+    this.post({ type: "showSettings" });
+  }
+
+  hasView(): boolean {
+    return Boolean(this.view);
+  }
+
   private async pushConfig(): Promise<void> {
     const config = readConfig();
     const hasKey = await this.keyStore.hasForProfile(config.profileId, config.provider);
@@ -326,6 +352,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       profileName: config.profileName || config.provider,
       profileId: config.profileId,
     });
+  }
+
+  private async pushModels(): Promise<void> {
+    const config = readConfig();
+    const apiKey =
+      (await this.keyStore.getForProfile(config.profileId, config.provider)) ?? "";
+    try {
+      const models = await listModels({
+        provider: config.provider,
+        apiKey,
+        baseUrl: config.baseUrl,
+        tlsInsecure: config.tlsInsecure,
+      });
+      this.post({
+        type: "models",
+        models: models.map((m) => ({ id: m.id, label: m.label || m.id })),
+      });
+    } catch {
+      this.post({
+        type: "models",
+        models: config.model ? [{ id: config.model, label: config.model }] : [],
+      });
+    }
   }
 
   private async rebuildProvider() {
@@ -597,20 +646,93 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         <div id="mentionPopup" class="mention-popup hidden"></div>
         <textarea id="input" rows="3" placeholder="Pergunte ao Forge…"></textarea>
         <div class="composer-bar">
-          <button id="btnSlash" class="icon-chip" title="Comandos" type="button">/</button>
-          <button id="btnMode" class="chip mode" title="Modo de autonomia" type="button">agent</button>
-          <button id="btnModel" class="chip model" title="Modelo / provedor" type="button">modelo</button>
-          <span class="meter" id="contextMeter" title="Contexto (visual)">
-            <span class="meter-fill" style="width: 28%"></span>
-          </span>
-          <span class="spacer"></span>
-          <button id="btnAttach" class="icon-chip" title="Anexar contexto" type="button" aria-label="Anexar">＋</button>
-          <button id="btnStop" class="chip danger hidden" title="Parar" type="button">Parar</button>
-          <button id="btnSend" class="send" type="button" title="Enviar">↑</button>
+          <div class="bar-left">
+            <div class="select-wrap" id="modeWrap">
+              <button id="btnMode" class="pill mode" type="button" aria-haspopup="listbox" aria-expanded="false" title="Modo">
+                <span class="pill-icon" id="modeIcon" aria-hidden="true">✦</span>
+                <span class="pill-label" id="modeLabel">Agent</span>
+                <span class="pill-caret" aria-hidden="true">▾</span>
+              </button>
+              <div id="modeMenu" class="popover hidden" role="listbox">
+                <button type="button" class="pop-item" data-mode="ask" role="option">
+                  <span class="pop-icon">💬</span><span class="pop-label">Ask</span><span class="pop-check"></span>
+                </button>
+                <button type="button" class="pop-item" data-mode="plan" role="option">
+                  <span class="pop-icon">☰</span><span class="pop-label">Plan</span><span class="pop-check"></span>
+                </button>
+                <button type="button" class="pop-item" data-mode="agent" role="option">
+                  <span class="pop-icon">✦</span><span class="pop-label">Agent</span><span class="pop-check"></span>
+                </button>
+                <button type="button" class="pop-item" data-mode="auto" role="option">
+                  <span class="pop-icon">⚡</span><span class="pop-label">Auto</span><span class="pop-check"></span>
+                </button>
+                <div class="pop-footer">Ctrl . próximo modo</div>
+              </div>
+            </div>
+
+            <div class="select-wrap" id="modelWrap">
+              <button id="btnModel" class="pill model" type="button" aria-haspopup="listbox" aria-expanded="false" title="Modelo">
+                <span class="pill-label" id="modelLabel">modelo</span>
+                <span class="pill-caret" aria-hidden="true">▾</span>
+              </button>
+              <div id="modelMenu" class="popover model-popover hidden" role="listbox">
+                <div class="pop-header">
+                  <span>Models</span>
+                  <button type="button" id="btnModelSettings" class="icon-btn tiny" title="Configurações">⚙</button>
+                </div>
+                <div id="modelList" class="pop-list"></div>
+                <button type="button" class="pop-item add" id="btnAddModel">
+                  <span class="pop-icon">＋</span><span class="pop-label">Add model</span>
+                </button>
+                <div class="pop-footer">Ctrl ' alternar modelo</div>
+              </div>
+            </div>
+
+            <button id="btnComposerSettings" class="icon-btn tiny" type="button" title="Configurações" aria-label="Configurações">⚙</button>
+          </div>
+
+          <div class="bar-right">
+            <button id="btnStop" class="chip danger hidden" title="Parar" type="button">Parar</button>
+            <button id="btnSend" class="enter" type="button" title="Enviar">
+              <span class="enter-key">↵</span>
+              <span class="enter-label">Enter</span>
+            </button>
+          </div>
         </div>
       </div>
-      <div class="composer-hint">Enter envia · Shift+Enter nova linha · @ arquivo · / comando</div>
     </footer>
+
+    <div id="settingsOverlay" class="settings-overlay hidden" aria-hidden="true">
+      <div class="settings-sheet" role="dialog" aria-label="Configurações">
+        <div class="settings-top">
+          <div class="settings-title">Configurações</div>
+          <button type="button" id="btnCloseSettings" class="icon-btn" title="Fechar" aria-label="Fechar">×</button>
+        </div>
+        <div class="settings-body">
+          <section class="settings-block">
+            <div class="settings-label">Perfil ativo</div>
+            <div id="settingsProfile" class="settings-value">—</div>
+          </section>
+          <section class="settings-block">
+            <div class="settings-label">Provedor</div>
+            <div id="settingsProvider" class="settings-value">—</div>
+          </section>
+          <section class="settings-block">
+            <div class="settings-label">Modelo</div>
+            <div id="settingsModel" class="settings-value">—</div>
+          </section>
+          <section class="settings-block">
+            <div class="settings-label">API key</div>
+            <div id="settingsKey" class="settings-value">—</div>
+          </section>
+          <p class="settings-note">Ajuste fino de perfis e keys continua no painel completo. Esta folha fica sobre o chat, no estilo Continue.</p>
+          <div class="settings-actions">
+            <button type="button" id="btnSettingsProfiles" class="ghost">Gerenciar perfis</button>
+            <button type="button" id="btnSettingsKey" class="primary">Definir API key</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

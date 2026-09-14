@@ -22,10 +22,16 @@ export function activate(context: vscode.ExtensionContext): void {
     profileStore
   );
 
-  const openSettings = () =>
+  const openSettings = () => {
+    // Prefer Continue-style sheet over the chat webview.
+    if (chat.hasView()) {
+      chat.showSettings();
+      return;
+    }
     SettingsPanel.createOrShow(context.extensionUri, keyStore, profileStore, () =>
       chat.refreshUi()
     );
+  };
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chat, {
