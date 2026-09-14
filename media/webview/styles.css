@@ -169,9 +169,107 @@ html, body {
   border: 1px solid var(--line);
 }
 
+/* Compact tool rows — Claude/Codex style */
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  max-width: 100%;
+}
+
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 12px;
+  font-family: var(--mono);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tool-head:hover {
+  background: var(--chip);
+  color: var(--text);
+}
+
+.tool-chevron {
+  flex: 0 0 auto;
+  width: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.tool-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.tool-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.tool-card.running .tool-meta {
+  color: var(--muted);
+}
+
+.tool-card.pending .tool-meta {
+  color: var(--accent);
+}
+
+.tool-card.ok .tool-title {
+  color: var(--muted);
+}
+
+.tool-card.err .tool-title,
+.tool-card.err .tool-meta {
+  color: var(--danger);
+}
+
+.tool-body {
+  margin: 0 0 4px 18px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+}
+
+.tool-body.hidden {
+  display: none;
+}
+
+.tool-detail {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 .msg.status {
   color: var(--muted);
   font-size: 12px;
+  font-style: italic;
 }
 
 .msg.error {

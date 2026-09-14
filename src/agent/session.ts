@@ -17,6 +17,12 @@ import {
 } from "./diff";
 import { CheckpointStore } from "./checkpoints";
 import { createToolRegistry, toolDefinitions, type RegisteredTool } from "./tools";
+import {
+  previewToolOutput,
+  sanitizeArgsForUi,
+  summarizeToolRequest,
+  summarizeToolResult,
+} from "./toolSummary";
 import { loadProjectRules } from "./rules";
 
 export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
@@ -220,16 +226,10 @@ export class AgentSession {
       this.config.autonomy === "plan"
     ) {
       if (tool.risk === "write" || tool.risk === "terminal") {
-      const denied = `Bloqueado no modo ${this.config.autonomy} (${tool.risk}).`;
-      this.onEvent({
-        type: "tool_request",
-        toolName: call.name,
-        toolCallId: call.id,
-        args,
-        requiresApproval: false,
-      });
-      await this.pushToolResult(call.id, call.name, denied);
-      return;
+        const denied = `Bloqueado no modo ${this.config.autonomy} (${tool.risk}).`;
+        this.emitToolRequest(call.id, call.name, args, false);
+        await this.pushToolResult(call.id, call.name, denied);
+        return;
       }
     }
 
@@ -239,13 +239,7 @@ export class AgentSession {
     }
 
     const needsApproval = this.needsApproval(tool.risk);
-    this.onEvent({
-      type: "tool_request",
-      toolName: call.name,
-      toolCallId: call.id,
-      args,
-      requiresApproval: needsApproval,
-    });
+    this.emitToolRequest(call.id, call.name, args, needsApproval);
 
     if (needsApproval) {
       const ok = await this.approve({
@@ -260,7 +254,6 @@ export class AgentSession {
       }
     }
 
-    this.onEvent({ type: "status", text: `Executando ${call.name}…` });
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     const result = await tool.run(args, { cwd: root, signal });
     await this.pushToolResult(
@@ -311,23 +304,26 @@ export class AgentSession {
       type: "diff_proposal",
       toolName: call.name,
       toolCallId: call.id,
-      args,
-      diff: proposal,
-      requiresApproval: this.config.autonomy !== "auto",
-    });
-
-    this.onEvent({
-      type: "tool_request",
-      toolName: call.name,
-      toolCallId: call.id,
+      summary: summarizeToolRequest(call.name, { path: proposal.path }),
       args: {
         path: proposal.path,
         isNew: proposal.isNew,
         bytes: proposal.newContent.length,
       },
-      requiresApproval: this.config.autonomy !== "auto",
       diff: proposal,
+      requiresApproval: this.config.autonomy !== "auto",
     });
+
+    this.emitToolRequest(
+      call.id,
+      call.name,
+      {
+        path: proposal.path,
+        isNew: proposal.isNew,
+        bytes: proposal.newContent.length,
+      },
+      this.config.autonomy !== "auto"
+    );
 
     const needsApproval = this.needsApproval(risk);
     if (needsApproval) {
@@ -379,6 +375,22 @@ export class AgentSession {
     this.onEvent({ type: "plan_ready", plan: planMarkdown, text: planMarkdown });
   }
 
+  private emitToolRequest(
+    toolCallId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    requiresApproval: boolean
+  ): void {
+    this.onEvent({
+      type: "tool_request",
+      toolName,
+      toolCallId,
+      args: sanitizeArgsForUi(args),
+      summary: summarizeToolRequest(toolName, args),
+      requiresApproval,
+    });
+  }
+
   private async pushToolResult(
     toolCallId: string,
     toolName: string,
@@ -390,11 +402,18 @@ export class AgentSession {
       name: toolName,
       content: output,
     });
+    const ok =
+      !/^ERROR:/i.test(output) &&
+      !/^Usuário recusou/i.test(output) &&
+      !/^Bloqueado no modo/i.test(output) &&
+      !/^Tool desconhecida:/i.test(output);
     this.onEvent({
       type: "tool_result",
       toolName,
       toolCallId,
-      result: output,
+      ok,
+      summary: summarizeToolResult(toolName, output),
+      preview: previewToolOutput(output),
     });
   }
 

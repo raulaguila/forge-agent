@@ -94,7 +94,11 @@ export interface AgentEvent {
   toolName?: string;
   toolCallId?: string;
   args?: unknown;
+  /** @deprecated Prefer summary/preview for UI; full text stays in session messages. */
   result?: string;
+  summary?: string;
+  preview?: string;
+  ok?: boolean;
   requiresApproval?: boolean;
   diff?: DiffProposal;
   usage?: TokenUsage;

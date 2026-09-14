@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { cycleAutonomy, readConfig, setActiveModel, setAutonomy } from "../config";
+import { sanitizeArgsForUi, summarizeToolRequest } from "../agent/toolSummary";
 import { createProvider, providerRequiresApiKey } from "../providers";
 import { listModels } from "../providers/models";
 import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
@@ -396,6 +397,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private emitAgentEvent(ev: AgentEvent): void {
+    if (ev.type === "diff_proposal" && ev.diff) {
+      this.post({
+        type: "agent",
+        event: {
+          ...ev,
+          args: sanitizeArgsForUi(ev.args),
+          diff: {
+            path: ev.diff.path,
+            isNew: ev.diff.isNew,
+            oldContent: "",
+            newContent: "",
+          },
+          summary:
+            ev.summary ||
+            `${ev.diff.isNew ? "Create" : "Edit"} ${ev.diff.path}`,
+        },
+      });
+      return;
+    }
+    if (ev.type === "tool_request") {
+      this.post({
+        type: "agent",
+        event: {
+          ...ev,
+          args: sanitizeArgsForUi(ev.args),
+          diff: undefined,
+        },
+      });
+      return;
+    }
     this.post({ type: "agent", event: ev });
   }
 
@@ -412,7 +443,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         type: "approval",
         toolName: req.toolName,
         toolCallId: req.toolCallId,
-        args: req.args,
+        summary: summarizeToolRequest(
+          req.toolName,
+          (req.args && typeof req.args === "object"
+            ? req.args
+            : {}) as Record<string, unknown>
+        ),
+        args: sanitizeArgsForUi(req.args),
         risk: req.risk,
         diff: req.diff
           ? {
