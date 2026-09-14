@@ -1,0 +1,191 @@
+{
+  "name": "forge-agent",
+  "displayName": "Forge Agent",
+  "description": "Agentic coding assistant with Bring Your Own Key (BYOK) — OpenAI, Anthropic e OpenAI-compatible.",
+  "version": "0.1.0",
+  "publisher": "forge-agent",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "byok",
+    "coding",
+    "openai",
+    "anthropic",
+    "chatgpt",
+    "claude"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "forge-agent",
+          "title": "Forge Agent",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "forge-agent": [
+        {
+          "type": "webview",
+          "id": "forgeAgent.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "forgeAgent.openChat",
+        "title": "Forge Agent: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "forgeAgent.setApiKey",
+        "title": "Forge Agent: Set API Key (BYOK)"
+      },
+      {
+        "command": "forgeAgent.clearApiKey",
+        "title": "Forge Agent: Clear API Key"
+      },
+      {
+        "command": "forgeAgent.newChat",
+        "title": "Forge Agent: New Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "forgeAgent.stopAgent",
+        "title": "Forge Agent: Stop Agent",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "forgeAgent.explainSelection",
+        "title": "Forge Agent: Explain Selection"
+      },
+      {
+        "command": "forgeAgent.editSelection",
+        "title": "Forge Agent: Edit Selection with Agent"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "forgeAgent.newChat",
+          "when": "view == forgeAgent.chatView",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeAgent.stopAgent",
+          "when": "view == forgeAgent.chatView",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "forgeAgent.explainSelection",
+          "when": "editorHasSelection",
+          "group": "forgeAgent@1"
+        },
+        {
+          "command": "forgeAgent.editSelection",
+          "when": "editorHasSelection",
+          "group": "forgeAgent@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "forgeAgent.openChat"
+        },
+        {
+          "command": "forgeAgent.setApiKey"
+        },
+        {
+          "command": "forgeAgent.clearApiKey"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Forge Agent",
+      "properties": {
+        "forgeAgent.provider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "anthropic",
+            "openai-compatible"
+          ],
+          "default": "openai",
+          "description": "Provedor LLM (BYOK)."
+        },
+        "forgeAgent.model": {
+          "type": "string",
+          "default": "gpt-4o",
+          "description": "Modelo a usar (ex.: gpt-4o, claude-sonnet-4-20250514, deepseek-chat)."
+        },
+        "forgeAgent.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL customizada (obrigatória para openai-compatible; opcional para OpenAI)."
+        },
+        "forgeAgent.maxToolRounds": {
+          "type": "number",
+          "default": 25,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Máximo de rounds de tools por mensagem do usuário."
+        },
+        "forgeAgent.autoApproveReads": {
+          "type": "boolean",
+          "default": true,
+          "description": "Aprovar automaticamente tools de leitura (read_file, list_dir, search, diagnostics)."
+        },
+        "forgeAgent.requireApprovalForWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Pedir aprovação antes de write_file / apply_edit."
+        },
+        "forgeAgent.requireApprovalForTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Pedir aprovação antes de run_terminal."
+        },
+        "forgeAgent.systemPromptExtra": {
+          "type": "string",
+          "default": "",
+          "description": "Instruções extras anexadas ao system prompt do agent."
+        },
+        "forgeAgent.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Temperature do modelo."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "tsc --noEmit -p ./",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {}
+}
