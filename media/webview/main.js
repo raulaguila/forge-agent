@@ -8,8 +8,10 @@
   const btnStop = document.getElementById("btnStop");
   const btnNew = document.getElementById("btnNew");
   const btnKey = document.getElementById("btnKey");
+  const btnMode = document.getElementById("btnMode");
 
   let busy = false;
+  let autonomy = "agent";
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -50,7 +52,15 @@
   function setBusy(v) {
     busy = v;
     btnSend.disabled = v;
-    input.disabled = false;
+  }
+
+  function setMode(mode) {
+    autonomy = mode || "agent";
+    if (btnMode) {
+      btnMode.textContent = autonomy;
+      btnMode.dataset.mode = autonomy;
+      btnMode.title = "Modo: " + autonomy + " (clique para ciclar ask/agent/auto)";
+    }
   }
 
   function hideApproval() {
@@ -61,14 +71,31 @@
   function showApproval(payload) {
     approval.classList.remove("hidden");
     approval.innerHTML = "";
+    const isDiff = Boolean(payload.diff);
     approval.appendChild(
-      el("div", "label", `Aprovação — ${payload.toolName} (${payload.risk})`)
+      el(
+        "div",
+        "label",
+        isDiff
+          ? `Diff — ${payload.diff.isNew ? "criar" : "editar"} ${payload.diff.path}`
+          : `Aprovação — ${payload.toolName} (${payload.risk})`
+      )
     );
-    const pre = el("pre");
-    pre.textContent = JSON.stringify(payload.args, null, 2);
-    approval.appendChild(pre);
+    if (isDiff) {
+      approval.appendChild(
+        el(
+          "p",
+          "hint",
+          `Revise o diff aberto no editor (${payload.diff.bytes} bytes) e confirme.`
+        )
+      );
+    } else {
+      const pre = el("pre");
+      pre.textContent = JSON.stringify(payload.args, null, 2);
+      approval.appendChild(pre);
+    }
     const row = el("div", "row");
-    const allow = el("button", "primary", "Permitir");
+    const allow = el("button", "primary", isDiff ? "Aplicar" : "Permitir");
     const deny = el("button", "ghost", "Recusar");
     allow.onclick = () => {
       vscode.postMessage({ type: "approve", toolCallId: payload.toolCallId });
@@ -95,6 +122,11 @@
   btnStop.addEventListener("click", () => vscode.postMessage({ type: "stop" }));
   btnNew.addEventListener("click", () => vscode.postMessage({ type: "newChat" }));
   btnKey.addEventListener("click", () => vscode.postMessage({ type: "setApiKey" }));
+  if (btnMode) {
+    btnMode.addEventListener("click", () =>
+      vscode.postMessage({ type: "cycleAutonomy" })
+    );
+  }
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -108,7 +140,10 @@
 
     switch (msg.type) {
       case "config":
-        meta.textContent = `${msg.provider} · ${msg.model}${msg.hasKey ? "" : " · sem key"}`;
+        setMode(msg.autonomy);
+        meta.textContent = `${msg.provider} · ${msg.model} · ${msg.autonomy || "agent"}${
+          msg.hasKey ? "" : " · sem key"
+        }`;
         break;
       case "user":
         appendMessage("user", msg.text, "Você");
@@ -132,6 +167,15 @@
           appendMessage("status", ev.text || "");
         } else if (ev.type === "assistant_done") {
           appendMessage("assistant", ev.text || "", "Forge");
+        } else if (ev.type === "diff_proposal") {
+          const d = ev.diff;
+          appendMessage(
+            "tool",
+            d
+              ? `${d.isNew ? "criar" : "editar"} ${d.path}`
+              : ev.toolName || "diff",
+            "Diff"
+          );
         } else if (ev.type === "tool_request") {
           appendMessage(
             "tool",

@@ -114,6 +114,22 @@ button.ghost.danger:hover {
   border-color: var(--danger);
 }
 
+button.ghost.mode {
+  text-transform: lowercase;
+  color: var(--accent);
+  border-color: #5a4a2e;
+  min-width: 52px;
+}
+
+button.ghost.mode[data-mode="ask"] {
+  color: var(--muted);
+}
+
+button.ghost.mode[data-mode="auto"] {
+  color: var(--accent-2);
+  border-color: #2a3a2a;
+}
+
 button.primary {
   background: linear-gradient(180deg, #d2b68a, #b8945c);
   color: #1a140c;
@@ -216,6 +232,13 @@ button.primary {
   font-size: 11px;
   color: var(--muted);
   white-space: pre-wrap;
+}
+
+.approval .hint {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .approval .row {

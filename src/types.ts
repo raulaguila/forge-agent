@@ -5,6 +5,9 @@ export type ProviderId =
   | "anthropic"
   | "gemini";
 
+/** ask = só leitura; agent = writes via diff+approve; auto = aplica writes sem pedir */
+export type AutonomyMode = "ask" | "agent" | "auto";
+
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
 export interface ToolCall {
@@ -58,6 +61,13 @@ export interface ToolResult {
   output: string;
 }
 
+export interface DiffProposal {
+  path: string;
+  isNew: boolean;
+  oldContent: string;
+  newContent: string;
+}
+
 export interface AgentEvent {
   type:
     | "status"
@@ -65,6 +75,7 @@ export interface AgentEvent {
     | "assistant_done"
     | "tool_request"
     | "tool_result"
+    | "diff_proposal"
     | "error"
     | "done";
   text?: string;
@@ -73,6 +84,7 @@ export interface AgentEvent {
   args?: unknown;
   result?: string;
   requiresApproval?: boolean;
+  diff?: DiffProposal;
 }
 
 export interface ForgeConfig {
@@ -81,6 +93,7 @@ export interface ForgeConfig {
   baseUrl: string;
   tlsInsecure: boolean;
   maxToolRounds: number;
+  autonomy: AutonomyMode;
   autoApproveReads: boolean;
   requireApprovalForWrites: boolean;
   requireApprovalForTerminal: boolean;

@@ -1,21 +1,17 @@
 import * as vscode from "vscode";
-import * as fs from "fs";
 import * as path from "path";
-import { readConfig } from "../config";
+import { cycleAutonomy, readConfig, setAutonomy } from "../config";
 import { createProvider, providerRequiresApiKey } from "../providers";
 import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
-import type { AgentEvent } from "../types";
+import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "forgeAgent.chatView";
 
   private view?: vscode.WebviewView;
   private session?: AgentSession;
-  private pendingApprovals = new Map<
-    string,
-    { resolve: (ok: boolean) => void }
-  >();
+  private pendingApprovals = new Map<string, { resolve: (ok: boolean) => void }>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -30,10 +26,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.extensionUri, "media"),
-        vscode.Uri.joinPath(this.extensionUri, "src", "webview", "media"),
-      ],
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
     };
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
@@ -56,6 +49,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           await promptAndStoreApiKey(this.keyStore);
           await this.pushConfig();
           break;
+        case "cycleAutonomy":
+          await this.cycleAutonomyMode();
+          break;
+        case "setAutonomy": {
+          const mode = String(msg.mode ?? "") as AutonomyMode;
+          if (mode === "ask" || mode === "agent" || mode === "auto") {
+            await setAutonomy(mode);
+            await this.refreshSessionConfig();
+            await this.pushConfig();
+          }
+          break;
+        }
         case "approve":
         case "deny": {
           const id = String(msg.toolCallId ?? "");
@@ -85,6 +90,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.session?.stop();
   }
 
+  async cycleAutonomyMode(): Promise<void> {
+    const next = cycleAutonomy(readConfig().autonomy);
+    await setAutonomy(next);
+    await this.refreshSessionConfig();
+    await this.pushConfig();
+    void vscode.window.setStatusBarMessage(`Forge Agent: modo ${next}`, 2500);
+  }
+
   async sendPrompt(text: string): Promise<void> {
     await this.openChat();
     await this.handleSend(text);
@@ -101,8 +114,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       type: "config",
       provider: config.provider,
       model: config.model,
+      autonomy: config.autonomy,
       hasKey,
     });
+  }
+
+  private async rebuildProvider() {
+    const config = readConfig();
+    const key = (await this.keyStore.get(config.provider)) ?? "";
+    return {
+      config,
+      provider: createProvider({
+        provider: config.provider,
+        apiKey: key,
+        baseUrl: config.baseUrl,
+        tlsInsecure: config.tlsInsecure,
+      }),
+    };
+  }
+
+  private async refreshSessionConfig(): Promise<void> {
+    if (!this.session) {
+      return;
+    }
+    try {
+      const { provider, config } = await this.rebuildProvider();
+      this.session.updateProvider(provider, config);
+    } catch {
+      // ignore until next send
+    }
   }
 
   private async ensureSession(): Promise<AgentSession | undefined> {
@@ -119,16 +159,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    const freshConfig = readConfig();
-    const key = (await this.keyStore.get(freshConfig.provider)) ?? "";
-    let provider;
+    let rebuilt;
     try {
-      provider = createProvider({
-        provider: freshConfig.provider,
-        apiKey: key,
-        baseUrl: freshConfig.baseUrl,
-        tlsInsecure: freshConfig.tlsInsecure,
-      });
+      rebuilt = await this.rebuildProvider();
     } catch (e) {
       this.post({
         type: "error",
@@ -139,13 +172,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     if (!this.session) {
       this.session = new AgentSession(
-        provider,
-        freshConfig,
+        rebuilt.provider,
+        rebuilt.config,
         (ev) => this.emitAgentEvent(ev),
         (req) => this.requestApproval(req)
       );
     } else {
-      this.session.updateProvider(provider, freshConfig);
+      this.session.updateProvider(rebuilt.provider, rebuilt.config);
     }
     return this.session;
   }
@@ -159,6 +192,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     toolCallId: string;
     args: unknown;
     risk: string;
+    diff?: DiffProposal;
   }): Promise<boolean> {
     return new Promise((resolve) => {
       this.pendingApprovals.set(req.toolCallId, { resolve });
@@ -168,12 +202,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         toolCallId: req.toolCallId,
         args: req.args,
         risk: req.risk,
+        diff: req.diff
+          ? {
+              path: req.diff.path,
+              isNew: req.diff.isNew,
+              bytes: req.diff.newContent.length,
+            }
+          : undefined,
       });
 
       if (!this.view?.visible) {
+        const detail = req.diff
+          ? `${req.diff.isNew ? "Criar" : "Editar"} ${req.diff.path}`
+          : req.toolName;
         void vscode.window
           .showWarningMessage(
-            `Forge Agent quer executar ${req.toolName} (${req.risk})`,
+            `Forge Agent (${req.risk}): ${detail}`,
             "Permitir",
             "Recusar"
           )
@@ -202,14 +246,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private getHtml(webview: vscode.Webview): string {
-    const mediaCandidates = [
-      path.join(this.extensionUri.fsPath, "media", "webview"),
-      path.join(this.extensionUri.fsPath, "src", "webview", "media"),
-    ];
-    const mediaDir =
-      mediaCandidates.find((p) => fs.existsSync(path.join(p, "main.js"))) ??
-      mediaCandidates[0];
-
+    const mediaDir = path.join(this.extensionUri.fsPath, "media", "webview");
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.file(path.join(mediaDir, "main.js"))
     );
@@ -239,6 +276,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </div>
       </div>
       <div class="actions">
+        <button id="btnMode" class="ghost mode" title="Ciclar modo ask / agent / auto">agent</button>
         <button id="btnKey" class="ghost" title="API Key">Key</button>
         <button id="btnNew" class="ghost" title="Novo chat">New</button>
         <button id="btnStop" class="ghost danger" title="Parar">Stop</button>

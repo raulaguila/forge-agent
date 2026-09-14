@@ -27,6 +27,16 @@ Para gerar `.vsix`:
 npm run package
 ```
 
+## Modos de autonomia (v0.3)
+
+| Modo | Comportamento |
+|------|----------------|
+| `ask` | Só leitura — bloqueia write/terminal |
+| `agent` | Writes abrem **diff nativo** e pedem aprovação antes de gravar |
+| `auto` | Aplica writes automaticamente (terminal ainda pode pedir aprovação) |
+
+Alterar: botão de modo no header do chat, command **Forge Agent: Cycle Autonomy Mode**, ou setting `forgeAgent.autonomy`.
+
 ## Configurar BYOK
 
 1. Command Palette → **Forge Agent: Set API Key (BYOK)**

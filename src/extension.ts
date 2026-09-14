@@ -17,13 +17,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("forgeAgent.openChat", () => chat.openChat()),
     vscode.commands.registerCommand("forgeAgent.newChat", () => chat.newChat()),
     vscode.commands.registerCommand("forgeAgent.stopAgent", () => chat.stop()),
+    vscode.commands.registerCommand("forgeAgent.cycleAutonomy", () =>
+      chat.cycleAutonomyMode()
+    ),
     vscode.commands.registerCommand("forgeAgent.setApiKey", () =>
       promptAndStoreApiKey(keyStore)
     ),
     vscode.commands.registerCommand("forgeAgent.clearApiKey", async () => {
       const config = readConfig();
       await keyStore.clear(config.provider);
-      void vscode.window.showInformationMessage(`API key removida (${config.provider}).`);
+      void vscode.window.showInformationMessage(
+        `API key removida (${config.provider}).`
+      );
     }),
     vscode.commands.registerCommand("forgeAgent.explainSelection", async () => {
       const ed = vscode.window.activeTextEditor;
