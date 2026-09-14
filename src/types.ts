@@ -5,7 +5,7 @@ export type ProviderId =
   | "anthropic"
   | "gemini";
 
-/** ask = só leitura; plan = lê e propõe plano; agent = writes via diff+approve; auto = aplica writes */
+/** ask = Chat (sem tools); plan = lê e propõe plano; agent = writes via diff+approve; auto = aplica writes */
 export type AutonomyMode = "ask" | "plan" | "agent" | "auto";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";

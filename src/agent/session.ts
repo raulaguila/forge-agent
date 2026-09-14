@@ -33,13 +33,12 @@ export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
 
   const modeHint =
     config.autonomy === "ask"
-      ? "Modo ASK: apenas leitura. Não tente editar arquivos nem rodar terminal — explique o plano."
+      ? "Modo CHAT: conversa e explicações. Não use tools nem tente editar arquivos ou rodar terminal."
       : config.autonomy === "plan"
         ? "Modo PLAN: apenas leitura. Investigue o código com tools de leitura e entregue um plano Markdown detalhado (objetivo, passos, arquivos a tocar, riscos). NÃO edite arquivos nem rode terminal."
         : config.autonomy === "auto"
           ? "Modo AUTO: pode editar arquivos; ainda assim prefira apply_edit e valide com diagnostics."
           : "Modo AGENT: edições passam por diff/aprovação do usuário antes de gravar.";
-
   const rules = await loadProjectRules();
 
   return [

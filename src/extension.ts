@@ -88,23 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await chat.sendPrompt(prompt);
     }),
     vscode.commands.registerCommand("forgeAgent.editSelection", async () => {
-      const ed = vscode.window.activeTextEditor;
-      if (!ed || ed.selection.isEmpty) {
-        void vscode.window.showWarningMessage("Selecione um trecho de código.");
-        return;
-      }
-      const instruction = await vscode.window.showInputBox({
-        title: "Forge Agent — editar seleção",
-        prompt: "O que você quer que o agent faça com este trecho?",
-        ignoreFocusOut: true,
-      });
-      if (!instruction) {
-        return;
-      }
-      const prompt = selectionAsPrompt(instruction);
-      if (prompt) {
-        await chat.sendPrompt(prompt + "\n\nUse apply_edit ou write_file para aplicar.");
-      }
+      await chat.enterEditMode();
     })
   );
 }

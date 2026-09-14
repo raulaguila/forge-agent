@@ -24,6 +24,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private session?: AgentSession;
   private pendingApprovals = new Map<string, { resolve: (ok: boolean) => void }>();
   private currentSessionId?: string;
+  private editContext?: {
+    filePath: string;
+    language: string;
+    selection: string;
+    startLine: number;
+    endLine: number;
+  };
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -50,13 +57,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           await this.profileStore.ensureSeeded();
           await this.pushConfig();
           break;
-        case "send":
-          await this.handleSend(String(msg.text ?? ""));
+        case "send": {
+          const text = String(msg.text ?? "");
+          if (msg.edit && this.editContext) {
+            await this.handleEditSend(text);
+          } else {
+            await this.handleSend(text);
+          }
+          break;
+        }
+        case "exitEdit":
+          this.clearEditContext();
           break;
         case "stop":
           this.session?.stop();
           break;
         case "newChat":
+          this.clearEditContext();
           this.session?.clear();
           this.post({ type: "cleared" });
           break;
@@ -199,10 +216,74 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   async newChat(): Promise<void> {
+    this.clearEditContext();
     this.session?.clear();
     this.session?.checkpoints.clear();
     this.currentSessionId = undefined;
     this.post({ type: "cleared" });
+  }
+
+  /** Continue-style Edit: abre o chat com chrome de edição da seleção atual. */
+  async enterEditMode(): Promise<void> {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed || ed.selection.isEmpty) {
+      void vscode.window.showWarningMessage("Selecione um trecho de código.");
+      return;
+    }
+
+    const filePath = vscode.workspace.asRelativePath(ed.document.uri);
+    const selection = ed.document.getText(ed.selection);
+    const startLine = ed.selection.start.line + 1;
+    const endLine = ed.selection.end.line + 1;
+
+    this.editContext = {
+      filePath,
+      language: ed.document.languageId,
+      selection,
+      startLine,
+      endLine,
+    };
+
+    await this.openChat();
+    await setAutonomy("agent");
+    await this.refreshSessionConfig();
+    await this.pushConfig();
+    this.post({
+      type: "editMode",
+      active: true,
+      fileName: filePath,
+      startLine,
+      endLine,
+      selectionPreview: selection.slice(0, 240),
+    });
+  }
+
+  private clearEditContext(): void {
+    this.editContext = undefined;
+    this.post({ type: "editMode", active: false });
+  }
+
+  private async handleEditSend(instruction: string): Promise<void> {
+    const ctx = this.editContext;
+    if (!ctx) {
+      await this.handleSend(instruction);
+      return;
+    }
+    const prompt = [
+      `Edite a seleção em @${ctx.filePath} (linhas ${ctx.startLine}–${ctx.endLine}).`,
+      "",
+      "Instrução do usuário:",
+      instruction.trim(),
+      "",
+      "Trecho atual:",
+      "```" + (ctx.language || ""),
+      ctx.selection,
+      "```",
+      "",
+      "Use apply_edit ou write_file para aplicar as mudanças.",
+    ].join("\n");
+    this.clearEditContext();
+    await this.handleSend(prompt);
   }
 
   stop(): void {
@@ -593,6 +674,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.file(path.join(mediaDir, "main.js"))
     );
+    const markdownUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(mediaDir, "markdown.js"))
+    );
     const styleUri = webview.asWebviewUri(
       vscode.Uri.file(path.join(mediaDir, "styles.css"))
     );
@@ -632,6 +716,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </div>
     </header>
 
+    <div id="modeBanner" class="mode-banner" role="status"></div>
+    <div id="editBanner" class="edit-banner hidden" role="status">
+      <button type="button" id="btnExitEdit" class="edit-back" title="Sair do Edit (Esc)">←</button>
+      <div class="edit-copy">
+        <div class="edit-title">Editing <span id="editFile">arquivo</span></div>
+        <div class="edit-meta" id="editMeta">seleção</div>
+      </div>
+      <kbd class="edit-esc">Esc</kbd>
+    </div>
+
     <main id="messages"></main>
     <section id="approval" class="approval hidden"></section>
     <div id="usage" class="usage hidden"></div>
@@ -653,18 +747,38 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 <span class="pill-label" id="modeLabel">Agent</span>
                 <span class="pill-caret" aria-hidden="true">▾</span>
               </button>
-              <div id="modeMenu" class="popover hidden" role="listbox">
+              <div id="modeMenu" class="popover mode-popover hidden" role="listbox">
                 <button type="button" class="pop-item" data-mode="ask" role="option">
-                  <span class="pop-icon">💬</span><span class="pop-label">Ask</span><span class="pop-check"></span>
+                  <span class="pop-icon">💬</span>
+                  <span class="pop-text">
+                    <span class="pop-label">Chat</span>
+                    <span class="pop-hint">Respostas sem tools</span>
+                  </span>
+                  <span class="pop-check"></span>
                 </button>
                 <button type="button" class="pop-item" data-mode="plan" role="option">
-                  <span class="pop-icon">☰</span><span class="pop-label">Plan</span><span class="pop-check"></span>
+                  <span class="pop-icon">☰</span>
+                  <span class="pop-text">
+                    <span class="pop-label">Plan</span>
+                    <span class="pop-hint">Investiga e propõe plano</span>
+                  </span>
+                  <span class="pop-check"></span>
                 </button>
                 <button type="button" class="pop-item" data-mode="agent" role="option">
-                  <span class="pop-icon">✦</span><span class="pop-label">Agent</span><span class="pop-check"></span>
+                  <span class="pop-icon">✦</span>
+                  <span class="pop-text">
+                    <span class="pop-label">Agent</span>
+                    <span class="pop-hint">Edita com aprovação</span>
+                  </span>
+                  <span class="pop-check"></span>
                 </button>
                 <button type="button" class="pop-item" data-mode="auto" role="option">
-                  <span class="pop-icon">⚡</span><span class="pop-label">Auto</span><span class="pop-check"></span>
+                  <span class="pop-icon">⚡</span>
+                  <span class="pop-text">
+                    <span class="pop-label">Auto</span>
+                    <span class="pop-hint">Aplica writes sozinho</span>
+                  </span>
+                  <span class="pop-check"></span>
                 </button>
                 <div class="pop-footer">Ctrl . próximo modo</div>
               </div>
@@ -734,6 +848,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </div>
     </div>
   </div>
+  <script nonce="${nonce}" src="${markdownUri}"></script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

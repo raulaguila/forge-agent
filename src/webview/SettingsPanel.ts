@@ -479,8 +479,8 @@ export class SettingsPanel {
             <label>
               <span>Autonomia</span>
               <select id="autonomy">
-                <option value="ask">ask — só leitura</option>
-                <option value="plan">plan — plano antes de editar</option>
+                <option value="ask">chat — conversa sem tools</option>
+                <option value="plan">plan — investiga e propõe plano</option>
                 <option value="agent">agent — edits com aprovação</option>
                 <option value="auto">auto — aplica writes</option>
               </select>
