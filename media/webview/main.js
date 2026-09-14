@@ -2,24 +2,20 @@
   const vscode = acquireVsCodeApi();
   const messagesEl = document.getElementById("messages");
   const input = document.getElementById("input");
-  const meta = document.getElementById("meta");
   const approval = document.getElementById("approval");
   const mentionPopup = document.getElementById("mentionPopup");
   const btnSend = document.getElementById("btnSend");
   const btnStop = document.getElementById("btnStop");
   const btnNew = document.getElementById("btnNew");
-  const btnKey = document.getElementById("btnKey");
   const btnMode = document.getElementById("btnMode");
-  const btnHistory = document.getElementById("btnHistory");
-  const btnUndo = document.getElementById("btnUndo");
-  const btnSettings = document.getElementById("btnSettings");
-  const btnProvider = document.getElementById("btnProvider");
   const btnModel = document.getElementById("btnModel");
+  const btnMenu = document.getElementById("btnMenu");
+  const overflowMenu = document.getElementById("overflowMenu");
+  const usageEl = document.getElementById("usage");
 
   let busy = false;
   let autonomy = "agent";
   let streamNode = null;
-  const usageEl = document.getElementById("usage");
   let mentionItems = [];
   let mentionIndex = 0;
   let mentionQueryStart = -1;
@@ -35,13 +31,9 @@
   function showEmpty() {
     messagesEl.innerHTML = "";
     const box = el("div", "empty");
-    box.appendChild(el("h1", null, "Forge Agent"));
+    box.appendChild(el("h1", null, "Forge"));
     box.appendChild(
-      el(
-        "p",
-        null,
-        "Use /explain /review /tests /commit /plan, @arquivo e @selection. Regras: .forge/rules.md"
-      )
+      el("p", null, "Pergunte qualquer coisa sobre o código. Use @arquivo ou /plan.")
     );
     messagesEl.appendChild(box);
   }
@@ -64,11 +56,14 @@
   function setBusy(v) {
     busy = v;
     btnSend.disabled = v;
+    if (btnStop) {
+      btnStop.classList.toggle("hidden", !v);
+    }
   }
 
   function shortLabel(text, max) {
     const t = String(text || "");
-    const limit = max || 12;
+    const limit = max || 18;
     return t.length > limit ? t.slice(0, limit - 1) + "…" : t;
   }
 
@@ -78,6 +73,19 @@
       btnMode.textContent = autonomy;
       btnMode.dataset.mode = autonomy;
     }
+  }
+
+  function closeMenu() {
+    if (!overflowMenu || !btnMenu) return;
+    overflowMenu.classList.add("hidden");
+    btnMenu.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleMenu() {
+    if (!overflowMenu || !btnMenu) return;
+    const open = overflowMenu.classList.contains("hidden");
+    overflowMenu.classList.toggle("hidden", !open);
+    btnMenu.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
   function hideApproval() {
@@ -204,39 +212,43 @@
   }
 
   btnSend.addEventListener("click", send);
-  btnStop.addEventListener("click", () => vscode.postMessage({ type: "stop" }));
-  btnNew.addEventListener("click", () => vscode.postMessage({ type: "newChat" }));
-  btnKey.addEventListener("click", () => vscode.postMessage({ type: "openSettings" }));
-  if (btnSettings) {
-    btnSettings.addEventListener("click", () =>
-      vscode.postMessage({ type: "openSettings" })
-    );
+  if (btnStop) {
+    btnStop.addEventListener("click", () => vscode.postMessage({ type: "stop" }));
+  }
+  if (btnNew) {
+    btnNew.addEventListener("click", () => {
+      closeMenu();
+      vscode.postMessage({ type: "newChat" });
+    });
   }
   if (btnMode) {
     btnMode.addEventListener("click", () =>
       vscode.postMessage({ type: "cycleAutonomy" })
     );
   }
-  if (btnHistory) {
-    btnHistory.addEventListener("click", () =>
-      vscode.postMessage({ type: "listSessions" })
-    );
-  }
-  if (btnUndo) {
-    btnUndo.addEventListener("click", () =>
-      vscode.postMessage({ type: "undoCheckpoint" })
-    );
-  }
-  if (btnProvider) {
-    btnProvider.addEventListener("click", () =>
+  if (btnModel) {
+    btnModel.addEventListener("click", () =>
       vscode.postMessage({ type: "openSettings" })
     );
   }
-  if (btnModel) {
-    btnModel.addEventListener("click", () =>
-      vscode.postMessage({ type: "pickModel" })
-    );
+  if (btnMenu) {
+    btnMenu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMenu();
+    });
   }
+  if (overflowMenu) {
+    overflowMenu.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.getAttribute("data-action");
+      closeMenu();
+      if (action === "settings") vscode.postMessage({ type: "openSettings" });
+      if (action === "history") vscode.postMessage({ type: "listSessions" });
+      if (action === "undo") vscode.postMessage({ type: "undoCheckpoint" });
+    });
+  }
+  document.addEventListener("click", () => closeMenu());
 
   input.addEventListener("input", detectMention);
   input.addEventListener("keydown", (e) => {
@@ -277,16 +289,13 @@
     switch (msg.type) {
       case "config":
         setMode(msg.autonomy);
-        if (btnProvider) {
-          btnProvider.textContent = shortLabel(msg.profileName || msg.provider);
-        }
         if (btnModel) {
-          btnModel.textContent = shortLabel(msg.model, 18);
-          btnModel.title = `Modelo ativo: ${msg.model} (só do provedor selecionado)`;
+          const label = shortLabel(msg.model || "modelo", 22);
+          btnModel.textContent = label;
+          btnModel.title = `${msg.profileName || msg.provider} · ${msg.model}${
+            msg.hasKey ? "" : " · sem key"
+          }`;
         }
-        meta.textContent = `${msg.profileName || msg.provider} · ${msg.model} · ${
-          msg.autonomy || "agent"
-        }${msg.hasKey ? "" : " · sem key"}`;
         break;
       case "user":
         appendMessage("user", msg.text, "Você");

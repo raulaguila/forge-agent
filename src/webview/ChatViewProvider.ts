@@ -526,33 +526,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <div id="app">
     <header class="top">
       <div class="brand">
-        <span class="mark"></span>
-        <div>
-          <div class="name">Forge Agent</div>
-          <div class="meta" id="meta">BYOK</div>
+        <span class="mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <div class="name">Forge</div>
         </div>
       </div>
-      <div class="actions">
-        <button id="btnSettings" class="ghost" title="Abrir configuração">Config</button>
-        <button id="btnProvider" class="ghost" title="Perfis / provedores">Perfil</button>
-        <button id="btnModel" class="ghost" title="Listar modelos do provedor ativo">Model</button>
-        <button id="btnMode" class="ghost mode" title="Ciclar modo ask / plan / agent / auto">agent</button>
-        <button id="btnHistory" class="ghost" title="Histórico">Hist</button>
-        <button id="btnUndo" class="ghost" title="Undo checkpoint">Undo</button>
-        <button id="btnKey" class="ghost" title="API Key">Key</button>
-        <button id="btnNew" class="ghost" title="Novo chat">New</button>
-        <button id="btnStop" class="ghost danger" title="Parar">Stop</button>
+      <div class="top-actions">
+        <button id="btnNew" class="icon-btn" title="Novo chat" aria-label="Novo chat">＋</button>
+        <div class="menu-wrap">
+          <button id="btnMenu" class="icon-btn" title="Mais opções" aria-label="Mais opções" aria-expanded="false">⋯</button>
+          <div id="overflowMenu" class="menu hidden" role="menu">
+            <button type="button" data-action="settings" role="menuitem">Configurações</button>
+            <button type="button" data-action="history" role="menuitem">Histórico</button>
+            <button type="button" data-action="undo" role="menuitem">Desfazer checkpoint</button>
+          </div>
+        </div>
       </div>
     </header>
+
     <main id="messages"></main>
     <section id="approval" class="approval hidden"></section>
     <div id="usage" class="usage hidden"></div>
+
     <footer class="composer">
-      <div class="composer-wrap">
+      <div class="composer-card">
         <div id="mentionPopup" class="mention-popup hidden"></div>
-        <textarea id="input" rows="3" placeholder="Peça ao agent… /explain /review /plan · @arquivo @selection"></textarea>
+        <textarea id="input" rows="3" placeholder="Pergunte ao Forge…  @arquivo  /plan"></textarea>
+        <div class="composer-bar">
+          <button id="btnMode" class="chip mode" title="Modo de autonomia" type="button">agent</button>
+          <button id="btnModel" class="chip model" title="Modelo / provedor" type="button">modelo</button>
+          <span class="spacer"></span>
+          <button id="btnStop" class="chip danger hidden" title="Parar" type="button">Parar</button>
+          <button id="btnSend" class="send" type="button" title="Enviar">↑</button>
+        </div>
       </div>
-      <button id="btnSend" class="primary">Enviar</button>
     </footer>
   </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
