@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { KeyStore, promptAndStoreApiKey } from "./secrets/keys";
 import { ChatViewProvider } from "./webview/ChatViewProvider";
 import { readConfig } from "./config";
+import { selectionAsPrompt } from "./agent/context";
 
 export function activate(context: vscode.ExtensionContext): void {
   const keyStore = new KeyStore(context.secrets);
@@ -20,6 +21,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("forgeAgent.cycleAutonomy", () =>
       chat.cycleAutonomyMode()
     ),
+    vscode.commands.registerCommand("forgeAgent.focusChatInput", () => chat.openChat()),
+    vscode.commands.registerCommand("forgeAgent.addSelectionToChat", async () => {
+      const ed = vscode.window.activeTextEditor;
+      if (!ed || ed.selection.isEmpty) {
+        void vscode.window.showWarningMessage("Selecione um trecho de código.");
+        return;
+      }
+      const rel = vscode.workspace.asRelativePath(ed.document.uri);
+      const text = ed.document.getText(ed.selection);
+      await chat.insertIntoChat(
+        `@${rel}\n\`\`\`\n${text}\n\`\`\`\n\n`
+      );
+    }),
     vscode.commands.registerCommand("forgeAgent.setApiKey", () =>
       promptAndStoreApiKey(keyStore)
     ),
@@ -31,16 +45,12 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }),
     vscode.commands.registerCommand("forgeAgent.explainSelection", async () => {
-      const ed = vscode.window.activeTextEditor;
-      if (!ed || ed.selection.isEmpty) {
+      const prompt = selectionAsPrompt("Explique este trecho:");
+      if (!prompt) {
         void vscode.window.showWarningMessage("Selecione um trecho de código.");
         return;
       }
-      const rel = vscode.workspace.asRelativePath(ed.document.uri);
-      const text = ed.document.getText(ed.selection);
-      await chat.sendPrompt(
-        `Explique este trecho de \`${rel}\` (linhas ${ed.selection.start.line + 1}-${ed.selection.end.line + 1}):\n\n\`\`\`\n${text}\n\`\`\``
-      );
+      await chat.sendPrompt(prompt);
     }),
     vscode.commands.registerCommand("forgeAgent.editSelection", async () => {
       const ed = vscode.window.activeTextEditor;
@@ -56,11 +66,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!instruction) {
         return;
       }
-      const rel = vscode.workspace.asRelativePath(ed.document.uri);
-      const text = ed.document.getText(ed.selection);
-      await chat.sendPrompt(
-        `${instruction}\n\nArquivo: \`${rel}\`\nSeleção (linhas ${ed.selection.start.line + 1}-${ed.selection.end.line + 1}):\n\`\`\`\n${text}\n\`\`\`\n\nUse apply_edit ou write_file para aplicar a mudança.`
-      );
+      const prompt = selectionAsPrompt(instruction);
+      if (prompt) {
+        await chat.sendPrompt(prompt + "\n\nUse apply_edit ou write_file para aplicar.");
+      }
     })
   );
 }

@@ -253,6 +253,44 @@ button.primary {
   padding: 10px 12px 12px;
   border-top: 1px solid var(--line);
   background: linear-gradient(0deg, rgba(26, 24, 20, 0.98), rgba(18, 17, 15, 0.85));
+  align-items: end;
+}
+
+.composer-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.mention-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  max-height: 180px;
+  overflow: auto;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  z-index: 5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.mention-popup.hidden {
+  display: none;
+}
+
+.mention-item {
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  border-bottom: 1px solid rgba(58, 52, 40, 0.5);
+}
+
+.mention-item:hover,
+.mention-item.active {
+  background: var(--bg2);
+  color: var(--accent);
 }
 
 textarea {

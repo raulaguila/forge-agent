@@ -4,6 +4,7 @@ import { cycleAutonomy, readConfig, setAutonomy } from "../config";
 import { createProvider, providerRequiresApiKey } from "../providers";
 import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
+import { expandUserMessage, suggestMentions } from "../agent/context";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -71,6 +72,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
           break;
         }
+        case "searchMentions": {
+          const suggestions = await suggestMentions(String(msg.query ?? ""));
+          this.post({ type: "mentionSuggestions", suggestions });
+          break;
+        }
+        case "insertText": {
+          this.post({ type: "insertIntoComposer", text: String(msg.text ?? "") });
+          break;
+        }
         default:
           break;
       }
@@ -101,6 +111,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   async sendPrompt(text: string): Promise<void> {
     await this.openChat();
     await this.handleSend(text);
+  }
+
+  /** Insere texto no composer (ex.: seleção do editor). */
+  async insertIntoChat(text: string): Promise<void> {
+    await this.openChat();
+    this.post({ type: "insertIntoComposer", text });
   }
 
   private post(message: unknown): void {
@@ -240,9 +256,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: "user", text: trimmed });
     const session = await this.ensureSession();
     if (!session) {
+      this.post({ type: "agent", event: { type: "done" } });
       return;
     }
-    await session.run(trimmed);
+    const expanded = await expandUserMessage(trimmed);
+    await session.run(expanded);
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -285,7 +303,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <main id="messages"></main>
     <section id="approval" class="approval hidden"></section>
     <footer class="composer">
-      <textarea id="input" rows="3" placeholder="Peça ao agent para implementar, depurar ou refatorar…"></textarea>
+      <div class="composer-wrap">
+        <div id="mentionPopup" class="mention-popup hidden"></div>
+        <textarea id="input" rows="3" placeholder="Peça ao agent… Use @arquivo, @pasta/, @selection ou @active"></textarea>
+      </div>
       <button id="btnSend" class="primary">Enviar</button>
     </footer>
   </div>

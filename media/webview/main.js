@@ -4,6 +4,7 @@
   const input = document.getElementById("input");
   const meta = document.getElementById("meta");
   const approval = document.getElementById("approval");
+  const mentionPopup = document.getElementById("mentionPopup");
   const btnSend = document.getElementById("btnSend");
   const btnStop = document.getElementById("btnStop");
   const btnNew = document.getElementById("btnNew");
@@ -12,6 +13,10 @@
 
   let busy = false;
   let autonomy = "agent";
+  let mentionItems = [];
+  let mentionIndex = 0;
+  let mentionQueryStart = -1;
+  let mentionTimer = null;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -28,7 +33,7 @@
       el(
         "p",
         null,
-        "Agentic coding com a sua chave. Peça para implementar features, corrigir bugs ou refatorar — o agent lê, edita e roda comandos no workspace."
+        "Use @arquivo, @pasta/, @selection ou @active para anexar contexto. Atalhos: Ctrl+Shift+I (chat), Ctrl+Shift+L (add seleção)."
       )
     );
     messagesEl.appendChild(box);
@@ -59,13 +64,67 @@
     if (btnMode) {
       btnMode.textContent = autonomy;
       btnMode.dataset.mode = autonomy;
-      btnMode.title = "Modo: " + autonomy + " (clique para ciclar ask/agent/auto)";
     }
   }
 
   function hideApproval() {
     approval.classList.add("hidden");
     approval.innerHTML = "";
+  }
+
+  function hideMentions() {
+    mentionPopup.classList.add("hidden");
+    mentionPopup.innerHTML = "";
+    mentionItems = [];
+    mentionIndex = 0;
+    mentionQueryStart = -1;
+  }
+
+  function renderMentions() {
+    mentionPopup.innerHTML = "";
+    if (!mentionItems.length) {
+      hideMentions();
+      return;
+    }
+    mentionPopup.classList.remove("hidden");
+    mentionItems.forEach((item, i) => {
+      const row = el(
+        "div",
+        "mention-item" + (i === mentionIndex ? " active" : ""),
+        `${item.kind === "folder" ? "📁 " : item.kind === "file" ? "📄 " : "✦ "}${item.label}`
+      );
+      row.onclick = () => applyMention(item);
+      mentionPopup.appendChild(row);
+    });
+  }
+
+  function applyMention(item) {
+    if (mentionQueryStart < 0) return;
+    const before = input.value.slice(0, mentionQueryStart);
+    const afterCursor = input.value.slice(input.selectionStart);
+    // remove partial @query
+    const insert = item.insert.endsWith(" ") ? item.insert : item.insert + " ";
+    input.value = before + insert + afterCursor;
+    const pos = (before + insert).length;
+    input.setSelectionRange(pos, pos);
+    input.focus();
+    hideMentions();
+  }
+
+  function detectMention() {
+    const pos = input.selectionStart;
+    const left = input.value.slice(0, pos);
+    const match = left.match(/(^|[\s])@([^\s@]*)$/);
+    if (!match) {
+      hideMentions();
+      return;
+    }
+    mentionQueryStart = pos - match[2].length - 1;
+    const query = match[2];
+    clearTimeout(mentionTimer);
+    mentionTimer = setTimeout(() => {
+      vscode.postMessage({ type: "searchMentions", query });
+    }, 120);
   }
 
   function showApproval(payload) {
@@ -114,6 +173,7 @@
     const text = input.value.trim();
     if (!text || busy) return;
     input.value = "";
+    hideMentions();
     setBusy(true);
     vscode.postMessage({ type: "send", text });
   }
@@ -127,7 +187,33 @@
       vscode.postMessage({ type: "cycleAutonomy" })
     );
   }
+
+  input.addEventListener("input", detectMention);
   input.addEventListener("keydown", (e) => {
+    if (!mentionPopup.classList.contains("hidden") && mentionItems.length) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        mentionIndex = (mentionIndex + 1) % mentionItems.length;
+        renderMentions();
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        mentionIndex = (mentionIndex - 1 + mentionItems.length) % mentionItems.length;
+        renderMentions();
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        applyMention(mentionItems[mentionIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        hideMentions();
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -150,6 +236,7 @@
         break;
       case "cleared":
         hideApproval();
+        hideMentions();
         showEmpty();
         setBusy(false);
         break;
@@ -160,20 +247,35 @@
       case "approval":
         showApproval(msg);
         break;
+      case "mentionSuggestions":
+        mentionItems = msg.suggestions || [];
+        mentionIndex = 0;
+        renderMentions();
+        break;
+      case "insertIntoComposer": {
+        const t = String(msg.text || "");
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        input.value = input.value.slice(0, start) + t + input.value.slice(end);
+        const pos = start + t.length;
+        input.setSelectionRange(pos, pos);
+        input.focus();
+        break;
+      }
       case "agent": {
         const ev = msg.event;
         if (!ev) break;
         if (ev.type === "status") {
           appendMessage("status", ev.text || "");
+        } else if (ev.type === "assistant_delta") {
+          // reserved for streaming phase
         } else if (ev.type === "assistant_done") {
           appendMessage("assistant", ev.text || "", "Forge");
         } else if (ev.type === "diff_proposal") {
           const d = ev.diff;
           appendMessage(
             "tool",
-            d
-              ? `${d.isNew ? "criar" : "editar"} ${d.path}`
-              : ev.toolName || "diff",
+            d ? `${d.isNew ? "criar" : "editar"} ${d.path}` : ev.toolName || "diff",
             "Diff"
           );
         } else if (ev.type === "tool_request") {
@@ -183,8 +285,7 @@
             ev.requiresApproval ? "Tool (aguardando)" : "Tool"
           );
         } else if (ev.type === "tool_result") {
-          const preview = (ev.result || "").slice(0, 1200);
-          appendMessage("tool", preview, `${ev.toolName} →`);
+          appendMessage("tool", (ev.result || "").slice(0, 1200), `${ev.toolName} →`);
         } else if (ev.type === "error") {
           appendMessage("error", ev.text || "Erro", "Erro");
         } else if (ev.type === "done") {

@@ -2,7 +2,7 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"
@@ -82,6 +82,44 @@
         "command": "forgeAgent.cycleAutonomy",
         "title": "Forge Agent: Cycle Autonomy Mode (ask/agent/auto)",
         "icon": "$(shield)"
+      },
+      {
+        "command": "forgeAgent.addSelectionToChat",
+        "title": "Forge Agent: Add Selection to Chat",
+        "icon": "$(mention)"
+      },
+      {
+        "command": "forgeAgent.focusChatInput",
+        "title": "Forge Agent: Focus Chat"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "forgeAgent.openChat",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i"
+      },
+      {
+        "command": "forgeAgent.addSelectionToChat",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "editorTextFocus && editorHasSelection"
+      },
+      {
+        "command": "forgeAgent.stopAgent",
+        "key": "ctrl+shift+backspace",
+        "mac": "cmd+shift+backspace"
+      },
+      {
+        "command": "forgeAgent.cycleAutonomy",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m"
+      },
+      {
+        "command": "forgeAgent.newChat",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n",
+        "when": "forgeAgent.chatView.focus || view == forgeAgent.chatView"
       }
     ],
     "menus": {
