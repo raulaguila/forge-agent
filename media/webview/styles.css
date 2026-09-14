@@ -85,7 +85,17 @@ body {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
+  max-width: 62%;
+}
+
+.actions button {
+  max-width: 7.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 button {
