@@ -569,6 +569,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </div>
       </div>
       <div class="top-actions">
+        <button id="btnDemo" class="text-btn" title="Prévia visual" type="button" aria-pressed="false">Demo</button>
         <button id="btnNew" class="icon-btn" title="Novo chat" aria-label="Novo chat">＋</button>
         <div class="menu-wrap">
           <button id="btnMenu" class="icon-btn" title="Mais opções" aria-label="Mais opções" aria-expanded="false">⋯</button>
@@ -576,6 +577,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button type="button" data-action="settings" role="menuitem">Configurações</button>
             <button type="button" data-action="history" role="menuitem">Histórico</button>
             <button type="button" data-action="undo" role="menuitem">Desfazer checkpoint</button>
+            <button type="button" data-action="demo" role="menuitem">Prévia visual</button>
           </div>
         </div>
       </div>
@@ -587,16 +589,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     <footer class="composer">
       <div class="composer-card">
+        <div id="contextStrip" class="context-strip hidden">
+          <span class="context-dot" aria-hidden="true"></span>
+          <span id="contextLabel" class="context-label">Seleção · 12 linhas</span>
+          <button type="button" class="context-clear" id="btnClearContext" title="Ocultar">×</button>
+        </div>
         <div id="mentionPopup" class="mention-popup hidden"></div>
-        <textarea id="input" rows="3" placeholder="Pergunte ao Forge…  @arquivo  /plan"></textarea>
+        <textarea id="input" rows="3" placeholder="Pergunte ao Forge…"></textarea>
         <div class="composer-bar">
+          <button id="btnSlash" class="icon-chip" title="Comandos" type="button">/</button>
           <button id="btnMode" class="chip mode" title="Modo de autonomia" type="button">agent</button>
           <button id="btnModel" class="chip model" title="Modelo / provedor" type="button">modelo</button>
+          <span class="meter" id="contextMeter" title="Contexto (visual)">
+            <span class="meter-fill" style="width: 28%"></span>
+          </span>
           <span class="spacer"></span>
+          <button id="btnAttach" class="icon-chip" title="Anexar contexto" type="button" aria-label="Anexar">＋</button>
           <button id="btnStop" class="chip danger hidden" title="Parar" type="button">Parar</button>
           <button id="btnSend" class="send" type="button" title="Enviar">↑</button>
         </div>
       </div>
+      <div class="composer-hint">Enter envia · Shift+Enter nova linha · @ arquivo · / comando</div>
     </footer>
   </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
