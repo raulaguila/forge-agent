@@ -17,8 +17,9 @@ import {
 } from "./diff";
 import { CheckpointStore } from "./checkpoints";
 import { createToolRegistry, toolDefinitions, type RegisteredTool } from "./tools";
+import { loadProjectRules } from "./rules";
 
-export function buildSystemPrompt(config: ForgeConfig): string {
+export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "(nenhum workspace)";
   const openFiles = vscode.window.visibleTextEditors
     .map((e) => vscode.workspace.asRelativePath(e.document.uri))
@@ -32,6 +33,8 @@ export function buildSystemPrompt(config: ForgeConfig): string {
         : config.autonomy === "auto"
           ? "Modo AUTO: pode editar arquivos; ainda assim prefira apply_edit e valide com diagnostics."
           : "Modo AGENT: edições passam por diff/aprovação do usuário antes de gravar.";
+
+  const rules = await loadProjectRules();
 
   return [
     "Você é o Forge Agent — um coding agent autônomo dentro do VS Code.",
@@ -51,6 +54,7 @@ export function buildSystemPrompt(config: ForgeConfig): string {
     `Workspace root: ${root}`,
     openFiles.length ? `Editores abertos: ${openFiles.join(", ")}` : "Nenhum editor aberto.",
     config.systemPromptExtra ? `\nInstruções extras do usuário:\n${config.systemPromptExtra}` : "",
+    rules ? `\n## Regras do projeto\n${rules}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -77,19 +81,29 @@ export class AgentSession {
     private approve: ApprovalHandler
   ) {
     this.registry = createToolRegistry();
-    this.messages.push({ role: "system", content: buildSystemPrompt(config) });
+    this.messages.push({ role: "system", content: "Forge Agent" });
   }
 
   get history(): ChatMessage[] {
     return this.messages.filter((m) => m.role !== "system");
   }
 
+  private async refreshSystemPrompt(): Promise<void> {
+    const content = await buildSystemPrompt(this.config);
+    if (this.messages[0]?.role === "system") {
+      this.messages[0] = { role: "system", content };
+    } else {
+      this.messages.unshift({ role: "system", content });
+    }
+  }
+
   loadMessages(messages: ChatMessage[]): void {
     this.stop();
     this.messages = [
-      { role: "system", content: buildSystemPrompt(this.config) },
+      { role: "system", content: "Forge Agent" },
       ...messages.filter((m) => m.role !== "system"),
     ];
+    void this.refreshSystemPrompt();
   }
 
   get autonomy(): AutonomyMode {
@@ -98,7 +112,8 @@ export class AgentSession {
 
   clear(): void {
     this.stop();
-    this.messages = [{ role: "system", content: buildSystemPrompt(this.config) }];
+    this.messages = [{ role: "system", content: "Forge Agent" }];
+    void this.refreshSystemPrompt();
   }
 
   stop(): void {
@@ -109,15 +124,14 @@ export class AgentSession {
   updateProvider(provider: LlmProvider, config: ForgeConfig): void {
     this.provider = provider;
     this.config = config;
-    if (this.messages.length === 1 && this.messages[0]?.role === "system") {
-      this.messages[0] = { role: "system", content: buildSystemPrompt(config) };
-    }
+    void this.refreshSystemPrompt();
   }
 
   async run(userText: string): Promise<void> {
     this.stop();
     this.abort = new AbortController();
     const signal = this.abort.signal;
+    await this.refreshSystemPrompt();
 
     this.messages.push({ role: "user", content: userText });
     this.onEvent({ type: "status", text: `Pensando… (${this.config.autonomy})` });

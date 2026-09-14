@@ -81,6 +81,10 @@ Alterar: botão de modo no header do chat, command **Forge Agent: Cycle Autonomy
 - Ícone **Forge Agent** na Activity Bar → chat
 - `Forge Agent: Explain Selection` / `Edit Selection with Agent` no menu de contexto
 - Writes e terminal pedem aprovação (configurável)
+- Mentions: `@arquivo`, `@pasta/`, `@selection`, `@active`
+- Slash: `/explain`, `/review`, `/tests`, `/commit`, `/plan`, `/help`
+- Regras do projeto: `.forge/rules.md` (também `AGENTS.md` / `.cursorrules`) — command **Open Project Rules**
+- Histórico de sessões (Hist) e undo de checkpoint (Undo)
 
 ## Tools do agent
 
@@ -121,8 +125,9 @@ media/                  # ícone + assets do webview
 
 ## Roadmap sugerido
 
-- Streaming token-a-token na UI
-- Diff preview antes de aplicar edits
-- Memória/regras por projeto (`.forge/rules.md`)
-- MCP tools
-- Modo plano → execução
+- [x] Streaming token-a-token na UI
+- [x] Diff preview antes de aplicar edits
+- [x] Memória/regras por projeto (`.forge/rules.md`)
+- [x] Modo plano → execução
+- [ ] Multi-provider profiles + model picker
+- [ ] MCP tools

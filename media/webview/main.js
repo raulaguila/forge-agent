@@ -37,7 +37,7 @@
       el(
         "p",
         null,
-        "Use @arquivo, @pasta/, @selection ou @active para anexar contexto. Atalhos: Ctrl+Shift+I (chat), Ctrl+Shift+L (add seleção)."
+        "Use /explain /review /tests /commit /plan, @arquivo e @selection. Regras: .forge/rules.md"
       )
     );
     messagesEl.appendChild(box);
@@ -115,7 +115,19 @@
     hideMentions();
   }
 
+  function detectSlash() {
+    const pos = input.selectionStart;
+    const left = input.value.slice(0, pos);
+    const match = left.match(/(^|[\s])\/([a-zA-Z0-9_-]*)$/);
+    if (!match) return false;
+    mentionQueryStart = pos - match[2].length - 1;
+    vscode.postMessage({ type: "listSlash", query: match[2] });
+    return true;
+  }
+
   function detectMention() {
+    if (detectSlash()) return;
+
     const pos = input.selectionStart;
     const left = input.value.slice(0, pos);
     const match = left.match(/(^|[\s])@([^\s@]*)$/);
@@ -281,6 +293,19 @@
           });
         }
         messagesEl.appendChild(box);
+        break;
+      }
+      case "slashSuggestions": {
+        if (mentionQueryStart < 0) {
+          mentionQueryStart = input.value.lastIndexOf("/");
+        }
+        mentionItems = (msg.suggestions || []).map((s) => ({
+          label: "/" + s.name + " — " + s.description,
+          kind: "active",
+          insert: s.insert,
+        }));
+        mentionIndex = 0;
+        renderMentions();
         break;
       }
       case "mentionSuggestions":

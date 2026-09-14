@@ -4,6 +4,7 @@ import { ChatViewProvider } from "./webview/ChatViewProvider";
 import { readConfig } from "./config";
 import { selectionAsPrompt } from "./agent/context";
 import { SessionStore } from "./agent/sessions";
+import { openProjectRules } from "./agent/rules";
 
 export function activate(context: vscode.ExtensionContext): void {
   const keyStore = new KeyStore(context.secrets);
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("forgeAgent.undoCheckpoint", () =>
       chat.undoLastCheckpoint()
     ),
+    vscode.commands.registerCommand("forgeAgent.openRules", () => openProjectRules()),
     vscode.commands.registerCommand("forgeAgent.focusChatInput", () => chat.openChat()),
     vscode.commands.registerCommand("forgeAgent.addSelectionToChat", async () => {
       const ed = vscode.window.activeTextEditor;

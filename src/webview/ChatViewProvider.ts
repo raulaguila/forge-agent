@@ -5,6 +5,8 @@ import { createProvider, providerRequiresApiKey } from "../providers";
 import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
 import { expandUserMessage, suggestMentions } from "../agent/context";
+import { expandSlash, parseSlash, SLASH_COMMANDS } from "../agent/slash";
+import { openProjectRules } from "../agent/rules";
 import { SessionStore, titleFromMessages } from "../agent/sessions";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
 
@@ -78,6 +80,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case "searchMentions": {
           const suggestions = await suggestMentions(String(msg.query ?? ""));
           this.post({ type: "mentionSuggestions", suggestions });
+          break;
+        }
+        case "openRules":
+          await openProjectRules();
+          break;
+        case "listSlash": {
+          const q = String(msg.query ?? "")
+            .replace(/^\//, "")
+            .toLowerCase();
+          const suggestions = SLASH_COMMANDS.filter(
+            (c) => !q || c.name.startsWith(q)
+          ).map((c) => ({
+            name: c.name,
+            description: c.description,
+            insert: "/" + c.name + " ",
+          }));
+          this.post({ type: "slashSuggestions", suggestions, query: q });
           break;
         }
         case "listSessions": {
@@ -312,12 +331,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.post({ type: "user", text: trimmed });
+
+    if (trimmed === "/help" || trimmed.startsWith("/help ")) {
+      const lines = SLASH_COMMANDS.map((c) => `/${c.name} — ${c.description}`);
+      this.post({
+        type: "agent",
+        event: { type: "assistant_done", text: "Comandos slash:\n" + lines.join("\n") },
+      });
+      this.post({ type: "agent", event: { type: "done" } });
+      return;
+    }
+
+    const { command, rest } = parseSlash(trimmed);
+    let prompt = trimmed;
+    if (command) {
+      if (command.autonomy) {
+        await setAutonomy(command.autonomy);
+        await this.refreshSessionConfig();
+        await this.pushConfig();
+      }
+      prompt = expandSlash(command, rest);
+    }
+
     const session = await this.ensureSession();
     if (!session) {
       this.post({ type: "agent", event: { type: "done" } });
       return;
     }
-    const expanded = await expandUserMessage(trimmed);
+    const expanded = await expandUserMessage(prompt);
     await session.run(expanded);
     await this.persistSession();
   }
@@ -387,7 +428,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <footer class="composer">
       <div class="composer-wrap">
         <div id="mentionPopup" class="mention-popup hidden"></div>
-        <textarea id="input" rows="3" placeholder="Peça ao agent… Use @arquivo, @pasta/, @selection ou @active"></textarea>
+        <textarea id="input" rows="3" placeholder="Peça ao agent… /explain /review /plan · @arquivo @selection"></textarea>
       </div>
       <button id="btnSend" class="primary">Enviar</button>
     </footer>
