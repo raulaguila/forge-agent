@@ -21,8 +21,9 @@ All notable changes to Forge Agent are documented here.
 - Correlation IDs in the Forge Agent output channel
 
 ### Engineering
-- Unit tests (`npm test`) and GitHub Actions CI
+- Unit tests (`npm test`) and CI workflow template in `docs/github-ci.yml`
 - Packaging metadata for Marketplace releases
+- Copy `docs/github-ci.yml` → `.github/workflows/ci.yml` (requires GitHub `workflow` scope)
 
 ## [0.15.14] — 2026-03-24
 
