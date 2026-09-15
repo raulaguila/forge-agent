@@ -6,6 +6,13 @@ import {
   getPreferredSelection,
   listOpenEditorInfos,
 } from "./editorContext";
+import { isPathInsideRoot, scrubEnv } from "./pathGuard";
+import {
+  getPrimaryWorkspaceRoot,
+  getWorkspaceRoots,
+  resolveWorkspacePath,
+  toRelativePath,
+} from "./workspacePath";
 
 export interface ToolContext {
   cwd: string;
@@ -18,23 +25,31 @@ export interface RegisteredTool {
   run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 }
 
-function workspaceRoot(): string {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) {
-    throw new Error("Nenhuma pasta aberta no workspace.");
+/** Soft check: reject leading `cd` to an absolute path outside workspace roots. */
+function rejectsCdOutsideWorkspace(command: string): string | undefined {
+  const m = command.match(/^\s*cd\s+([^\s;&|]+)/i);
+  if (!m) {
+    return undefined;
   }
-  return folder.uri.fsPath;
-}
-
-function resolveInWorkspace(relOrAbs: string): vscode.Uri {
-  const root = workspaceRoot();
-  const abs = path.isAbsolute(relOrAbs) ? relOrAbs : path.join(root, relOrAbs);
-  const normalized = path.normalize(abs);
-  const rootNorm = path.normalize(root);
-  if (normalized !== rootNorm && !normalized.startsWith(rootNorm + path.sep)) {
-    throw new Error(`Path fora do workspace: ${relOrAbs}`);
+  let target = m[1];
+  if (
+    (target.startsWith('"') && target.endsWith('"')) ||
+    (target.startsWith("'") && target.endsWith("'"))
+  ) {
+    target = target.slice(1, -1);
   }
-  return vscode.Uri.file(normalized);
+  if (target === "~" || target.startsWith("~/") || target.startsWith("~\\")) {
+    return `cd para path fora do workspace bloqueado: ${m[1]}`;
+  }
+  if (!path.isAbsolute(target)) {
+    return undefined;
+  }
+  const roots = getWorkspaceRoots();
+  const inside = roots.some((r) => isPathInsideRoot(r, target));
+  if (!inside) {
+    return `cd para path fora do workspace bloqueado: ${m[1]}`;
+  }
+  return undefined;
 }
 
 async function readFile(args: Record<string, unknown>): Promise<ToolResult> {
@@ -43,7 +58,7 @@ async function readFile(args: Record<string, unknown>): Promise<ToolResult> {
     return { ok: false, output: "path é obrigatório" };
   }
   try {
-    const uri = resolveInWorkspace(filePath);
+    const uri = await resolveWorkspacePath(filePath);
     const data = await vscode.workspace.fs.readFile(uri);
     const text = Buffer.from(data).toString("utf8");
     const max = 120_000;
@@ -66,7 +81,7 @@ async function writeFile(args: Record<string, unknown>): Promise<ToolResult> {
     return { ok: false, output: "path é obrigatório" };
   }
   try {
-    const uri = resolveInWorkspace(filePath);
+    const uri = await resolveWorkspacePath(filePath);
     const dir = vscode.Uri.file(path.dirname(uri.fsPath));
     await vscode.workspace.fs.createDirectory(dir);
     await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf8"));
@@ -84,7 +99,7 @@ async function applyEdit(args: Record<string, unknown>): Promise<ToolResult> {
     return { ok: false, output: "path e old_text são obrigatórios" };
   }
   try {
-    const uri = resolveInWorkspace(filePath);
+    const uri = await resolveWorkspacePath(filePath);
     const data = await vscode.workspace.fs.readFile(uri);
     const text = Buffer.from(data).toString("utf8");
     if (!text.includes(oldText)) {
@@ -110,7 +125,7 @@ async function applyEdit(args: Record<string, unknown>): Promise<ToolResult> {
 async function listDir(args: Record<string, unknown>): Promise<ToolResult> {
   const dirPath = String(args.path ?? ".");
   try {
-    const uri = resolveInWorkspace(dirPath);
+    const uri = await resolveWorkspacePath(dirPath);
     const entries = await vscode.workspace.fs.readDirectory(uri);
     const lines = entries
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -150,7 +165,7 @@ async function searchFiles(args: Record<string, unknown>): Promise<ToolResult> {
         const lines = text.split(/\r?\n/);
         for (let i = 0; i < lines.length; i++) {
           if (regex.test(lines[i])) {
-            const rel = vscode.workspace.asRelativePath(file);
+            const rel = toRelativePath(file);
             hits.push(`${rel}:${i + 1}: ${lines[i].slice(0, 240)}`);
             if (hits.length >= maxResults) {
               break;
@@ -170,22 +185,39 @@ async function searchFiles(args: Record<string, unknown>): Promise<ToolResult> {
   }
 }
 
-function runTerminal(
+async function runTerminal(
   args: Record<string, unknown>,
   ctx: ToolContext
 ): Promise<ToolResult> {
-  const command = String(args.command ?? "");
+  const command = String(args.command ?? "").trim();
   if (!command) {
-    return Promise.resolve({ ok: false, output: "command é obrigatório" });
+    return { ok: false, output: "command é obrigatório" };
   }
-  const cwd = args.cwd ? resolveInWorkspace(String(args.cwd)).fsPath : ctx.cwd;
+
+  const cdBlock = rejectsCdOutsideWorkspace(command);
+  if (cdBlock) {
+    return { ok: false, output: cdBlock };
+  }
+
+  let cwd: string;
+  try {
+    if (args.cwd) {
+      cwd = (await resolveWorkspacePath(String(args.cwd))).fsPath;
+    } else {
+      cwd = getPrimaryWorkspaceRoot();
+    }
+  } catch (e) {
+    return { ok: false, output: e instanceof Error ? e.message : String(e) };
+  }
+
   const timeoutMs = Math.min(Number(args.timeout_ms ?? 60_000), 300_000);
+  const env = scrubEnv();
 
   return new Promise((resolve) => {
     const child = spawn(command, {
       cwd,
       shell: true,
-      env: process.env,
+      env,
     });
 
     let stdout = "";
@@ -241,14 +273,19 @@ async function getDiagnostics(args: Record<string, unknown>): Promise<ToolResult
   const filePath = args.path ? String(args.path) : undefined;
   const all = vscode.languages.getDiagnostics();
   const lines: string[] = [];
-  for (const [uri, diags] of all) {
-    if (filePath) {
-      const target = resolveInWorkspace(filePath);
-      if (uri.fsPath !== target.fsPath) {
-        continue;
-      }
+  let targetFsPath: string | undefined;
+  if (filePath) {
+    try {
+      targetFsPath = (await resolveWorkspacePath(filePath)).fsPath;
+    } catch (e) {
+      return { ok: false, output: e instanceof Error ? e.message : String(e) };
     }
-    const rel = vscode.workspace.asRelativePath(uri);
+  }
+  for (const [uri, diags] of all) {
+    if (targetFsPath && uri.fsPath !== targetFsPath) {
+      continue;
+    }
+    const rel = toRelativePath(uri);
     for (const d of diags) {
       const sev =
         d.severity === vscode.DiagnosticSeverity.Error
@@ -293,7 +330,7 @@ async function getSelection(): Promise<ToolResult> {
     };
   }
   const text = ctx.document.getText(ctx.selection);
-  const rel = vscode.workspace.asRelativePath(ctx.document.uri);
+  const rel = toRelativePath(ctx.document.uri);
   return {
     ok: true,
     output: JSON.stringify(
@@ -408,12 +445,16 @@ export function createToolRegistry(): Map<string, RegisteredTool> {
       def: {
         name: "run_terminal",
         description:
-          "Executa um comando no shell do workspace. Use para build, testes, git status, etc.",
+          "Executa um comando no shell com cwd enraizado no workspace (raiz primária ou subpasta validada). Env é mínimo (sem secrets). Use para build, testes, git status, etc.",
         parameters: {
           type: "object",
           properties: {
             command: { type: "string" },
-            cwd: { type: "string", description: "Subpasta relativa opcional" },
+            cwd: {
+              type: "string",
+              description:
+                "Subpasta relativa opcional (deve permanecer dentro do workspace)",
+            },
             timeout_ms: { type: "number" },
           },
           required: ["command"],

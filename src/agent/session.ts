@@ -26,6 +26,7 @@ import {
 } from "./toolSummary";
 import { loadProjectRules } from "./rules";
 import { activeFileRelativePath, listOpenEditorInfos } from "./editorContext";
+import { getPrimaryWorkspaceRoot } from "./workspacePath";
 
 export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "(nenhum workspace)";
@@ -111,6 +112,41 @@ export class AgentSession {
     }
   }
 
+  /** Drop/truncate old turns so long chats stay within a soft context budget. */
+  private compactMessages(): void {
+    const MAX_CHARS = 120_000;
+    const KEEP_RECENT = 40;
+    if (this.messages.length <= 2) return;
+
+    const system = this.messages[0]?.role === "system" ? [this.messages[0]] : [];
+    let rest = this.messages.slice(system.length);
+
+    if (rest.length > KEEP_RECENT) {
+      rest = rest.slice(-KEEP_RECENT);
+    }
+
+    const total = () =>
+      [...system, ...rest].reduce((n, m) => n + (m.content?.length ?? 0), 0);
+
+    if (total() > MAX_CHARS) {
+      rest = rest.map((m, idx) => {
+        if (idx >= rest.length - 8) return m;
+        if (m.role !== "tool" && m.role !== "assistant") return m;
+        if ((m.content?.length ?? 0) <= 500) return m;
+        return {
+          ...m,
+          content: `${m.content.slice(0, 500)}\n…[truncated for context]`,
+        };
+      });
+    }
+
+    while (total() > MAX_CHARS && rest.length > 6) {
+      rest.shift();
+    }
+
+    this.messages = [...system, ...rest];
+  }
+
   loadMessages(messages: ChatMessage[]): void {
     this.stop();
     this.messages = [
@@ -148,6 +184,7 @@ export class AgentSession {
     await this.refreshSystemPrompt();
 
     this.messages.push({ role: "user", content: userText });
+    this.compactMessages();
     this.onEvent({ type: "status", text: `Pensando… (${this.config.autonomy})` });
 
     try {
@@ -156,6 +193,8 @@ export class AgentSession {
           this.onEvent({ type: "error", text: "Interrompido." });
           return;
         }
+
+        this.compactMessages();
 
         const { message, finishReason, usage } = await this.provider.complete({
           model: this.config.model,
@@ -262,7 +301,17 @@ export class AgentSession {
       }
     }
 
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    let root: string;
+    try {
+      root = getPrimaryWorkspaceRoot();
+    } catch (e) {
+      await this.pushToolResult(
+        call.id,
+        call.name,
+        `ERROR: ${e instanceof Error ? e.message : String(e)}`
+      );
+      return;
+    }
     const result = await tool.run(args, { cwd: root, signal });
     await this.pushToolResult(
       call.id,

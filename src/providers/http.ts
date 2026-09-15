@@ -21,6 +21,10 @@ function readBody(res: IncomingMessage): Promise<string> {
   });
 }
 
+function isRetryableHttpStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
 export async function httpJson(
   url: string,
   opts: HttpJsonOptions = {}
@@ -105,7 +109,7 @@ export async function httpJson(
   for (let i = 0; i < 3; i++) {
     try {
       const result = await attempt();
-      if ((result.status === 429 || result.status >= 500) && i < 2) {
+      if (isRetryableHttpStatus(result.status) && i < 2) {
         await new Promise((r) => setTimeout(r, 400 * (i + 1)));
         continue;
       }
@@ -124,24 +128,14 @@ export async function httpJson(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-/** Stream response body as UTF-8 text chunks (SSE / NDJSON). */
-export async function* httpStreamText(
+function openStreamRequest(
   url: string,
-  opts: HttpJsonOptions = {}
-): AsyncGenerator<string> {
-  const method = opts.method ?? "POST";
-  const payload =
-    opts.body === undefined ? undefined : Buffer.from(JSON.stringify(opts.body), "utf8");
-  const headers: Record<string, string> = {
-    Accept: "text/event-stream, application/json",
-    ...(opts.headers ?? {}),
-  };
-  if (payload) {
-    headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
-    headers["Content-Length"] = String(payload.length);
-  }
-
-  const res = await new Promise<IncomingMessage>((resolve, reject) => {
+  method: string,
+  headers: Record<string, string>,
+  payload: Buffer | undefined,
+  opts: HttpJsonOptions
+): Promise<IncomingMessage> {
+  return new Promise((resolve, reject) => {
     const u = new URL(url);
     const isHttps = u.protocol === "https:";
     const lib = isHttps ? https : http;
@@ -167,28 +161,104 @@ export async function* httpStreamText(
       }
       opts.signal.addEventListener("abort", onAbort, { once: true });
     }
-    req.on("error", reject);
+    req.on("error", (err) => {
+      opts.signal?.removeEventListener("abort", onAbort);
+      reject(err);
+    });
+    req.on("close", () => {
+      opts.signal?.removeEventListener("abort", onAbort);
+    });
     if (payload) {
       req.write(payload);
     }
     req.end();
   });
+}
 
-  if ((res.statusCode ?? 0) >= 400) {
-    const raw = await readBody(res);
-    let msg = raw;
+async function httpErrorFromResponse(res: IncomingMessage): Promise<Error> {
+  const raw = await readBody(res);
+  let msg: unknown = raw;
+  try {
+    const parsed = JSON.parse(raw);
+    msg = parsed?.error?.message || parsed?.message || raw;
+  } catch {
+    // keep raw
+  }
+  return new Error(typeof msg === "string" ? msg : `HTTP ${res.statusCode}`);
+}
+
+/** Stream response body as UTF-8 text chunks (SSE / NDJSON). */
+export async function* httpStreamText(
+  url: string,
+  opts: HttpJsonOptions = {}
+): AsyncGenerator<string> {
+  const method = opts.method ?? "POST";
+  const payload =
+    opts.body === undefined ? undefined : Buffer.from(JSON.stringify(opts.body), "utf8");
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream, application/json",
+    ...(opts.headers ?? {}),
+  };
+  if (payload) {
+    headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+    headers["Content-Length"] = String(payload.length);
+  }
+
+  let lastErr: unknown;
+  for (let i = 0; i < 3; i++) {
+    let res: IncomingMessage;
     try {
-      msg = JSON.parse(raw)?.error?.message || JSON.parse(raw)?.message || raw;
-    } catch {
-      // keep raw
+      res = await openStreamRequest(url, method, headers, payload, opts);
+    } catch (e) {
+      lastErr = e;
+      if (opts.signal?.aborted) {
+        throw e;
+      }
+      if (i < 2) {
+        await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+        continue;
+      }
+      break;
     }
-    throw new Error(typeof msg === "string" ? msg : `HTTP ${res.statusCode}`);
-  }
 
-  let pending = "";
-  for await (const chunk of res) {
-    pending += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-    yield pending;
-    pending = "";
+    const status = res.statusCode ?? 0;
+
+    // Retry 429/5xx only before any body bytes are consumed for streaming.
+    if (isRetryableHttpStatus(status) && i < 2) {
+      try {
+        await readBody(res);
+      } catch {
+        // ignore drain errors
+      }
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+      continue;
+    }
+
+    if (status >= 400) {
+      throw await httpErrorFromResponse(res);
+    }
+
+    let receivedBytes = false;
+    try {
+      let pending = "";
+      for await (const chunk of res) {
+        receivedBytes = true;
+        pending += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+        yield pending;
+        pending = "";
+      }
+      return;
+    } catch (e) {
+      // Once streaming has started, do not retry — partial content is unsafe to redo.
+      if (receivedBytes || opts.signal?.aborted) {
+        throw e;
+      }
+      lastErr = e;
+      if (i < 2) {
+        await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+        continue;
+      }
+    }
   }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }

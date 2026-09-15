@@ -12,22 +12,31 @@ Provedores suportados:
 | `anthropic` | API key | `https://api.anthropic.com` | Claude |
 | `gemini` | API key | `https://generativelanguage.googleapis.com/v1beta` | Function calling |
 
-## Instalação (dev)
+## Instalação
+
+### Do Marketplace / VSIX
+
+1. Baixe o `.vsix` da [release](https://github.com/raulaguila/forge-agent/releases) ou gere com `npm run package`
+2. VS Code → **Extensions: Install from VSIX…**
+3. Recarregue a janela
+
+### Dev
 
 ```bash
 npm install
 npm run compile
+npm test
 ```
 
-No VS Code/Cursor: **Run and Debug → Run Extension** (abre uma janela Extension Development Host).
+No VS Code/Cursor: **Run and Debug → Run Extension**.
 
-Para gerar `.vsix`:
+## Documentação
 
-```bash
-npm run package
-```
+- [Segurança](docs/SECURITY.md)
+- [Solução de problemas](docs/TROUBLESHOOTING.md)
+- [Changelog](CHANGELOG.md)
 
-## Modos de autonomia (v0.3)
+## Modos de autonomia
 
 | Modo | Comportamento |
 |------|----------------|
@@ -116,9 +125,12 @@ media/                  # ícone + assets do webview
 
 ## Segurança
 
+Ver [docs/SECURITY.md](docs/SECURITY.md). Resumo:
+
 - Keys só no SecretStorage do VS Code
-- Paths das tools restritos à raiz do workspace
-- Aprovação explícita para write/terminal (default ligado)
+- Paths (tools + `@mentions`) restritos ao workspace (multi-root, realpath)
+- Terminal com cwd no workspace e env reduzido
+- Aprovação explícita para write/terminal (default ligado); timeout + diálogo do host
 - `tlsInsecure` desliga verificação de certificado — use só em redes confiáveis
 
 ## Roadmap sugerido
@@ -129,4 +141,5 @@ media/                  # ícone + assets do webview
 - [x] Modo plano → execução
 - [x] Multi-provider profiles + model picker
 - [x] Settings UI (perfis / keys / agent) sem QuickPicks
+- [x] Sandbox / terminal jail / CI / compactação de contexto
 - [ ] MCP tools

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { resolveWorkspacePath } from "./workspacePath";
 
 export interface FileSnapshot {
   path: string;
@@ -14,27 +15,22 @@ export interface Checkpoint {
   files: FileSnapshot[];
 }
 
-function workspaceRoot(): string {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) {
-    throw new Error("Nenhuma pasta aberta no workspace.");
-  }
-  return folder.uri.fsPath;
-}
-
-function resolvePath(relOrAbs: string): vscode.Uri {
-  const root = workspaceRoot();
-  const abs = path.isAbsolute(relOrAbs) ? relOrAbs : path.join(root, relOrAbs);
-  const normalized = path.normalize(abs);
-  const rootNorm = path.normalize(root);
-  if (normalized !== rootNorm && !normalized.startsWith(rootNorm + path.sep)) {
-    throw new Error(`Path fora do workspace: ${relOrAbs}`);
-  }
-  return vscode.Uri.file(normalized);
-}
+const STATE_KEY = "forgeAgent.checkpoints";
 
 export class CheckpointStore {
   private stack: Checkpoint[] = [];
+  private memento?: vscode.Memento;
+
+  /** Bind to workspaceState for durability across reloads. */
+  bindState(state: vscode.Memento): void {
+    this.memento = state;
+    this.stack = state.get<Checkpoint[]>(STATE_KEY, []);
+  }
+
+  private async persist(): Promise<void> {
+    if (!this.memento) return;
+    await this.memento.update(STATE_KEY, this.stack.slice(-30));
+  }
 
   list(): Checkpoint[] {
     return [...this.stack].reverse();
@@ -42,13 +38,14 @@ export class CheckpointStore {
 
   clear(): void {
     this.stack = [];
+    void this.persist();
   }
 
   async snapshotBeforeWrite(
     filePath: string,
     label: string
   ): Promise<Checkpoint> {
-    const uri = resolvePath(filePath);
+    const uri = await resolveWorkspacePath(filePath);
     let existed = true;
     let content = "";
     try {
@@ -67,6 +64,7 @@ export class CheckpointStore {
     if (this.stack.length > 30) {
       this.stack.shift();
     }
+    await this.persist();
     return cp;
   }
 
@@ -81,8 +79,9 @@ export class CheckpointStore {
       return "Checkpoint não encontrado.";
     }
     const [cp] = this.stack.splice(idx, 1);
+    await this.persist();
     for (const file of cp.files) {
-      const uri = resolvePath(file.path);
+      const uri = await resolveWorkspacePath(file.path);
       if (!file.existed) {
         try {
           await vscode.workspace.fs.delete(uri);

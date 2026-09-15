@@ -42,7 +42,8 @@ function activateSafe(context: vscode.ExtensionContext): void {
     context.extensionUri,
     keyStore,
     sessionStore,
-    profileStore
+    profileStore,
+    context.workspaceState
   );
 
   const openSettings = () => {

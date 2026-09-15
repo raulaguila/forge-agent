@@ -13,7 +13,15 @@ import { openProjectRules } from "../agent/rules";
 import { ProfileStore } from "../agent/profiles";
 import { SessionStore, titleFromMessages } from "../agent/sessions";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
-import { logError, logInfo, logWarn, showLog } from "../log";
+import { logError, logInfo, logWarn, showLog, beginLogRun, endLogRun } from "../log";
+
+/** Default time to wait for tool approval before auto-deny. */
+export const APPROVAL_TIMEOUT_MS = 120_000;
+
+type PendingApproval = {
+  resolve: (ok: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "forgeAgent.chatView";
@@ -21,7 +29,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private panel?: vscode.WebviewPanel;
   private session?: AgentSession;
-  private pendingApprovals = new Map<string, { resolve: (ok: boolean) => void }>();
+  private pendingApprovals = new Map<string, PendingApproval>();
   private currentSessionId?: string;
   private editContext?: {
     filePath: string;
@@ -35,7 +43,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly keyStore: KeyStore,
     private readonly sessionStore: SessionStore,
-    private readonly profileStore: ProfileStore
+    private readonly profileStore: ProfileStore,
+    private readonly workspaceState: vscode.Memento
   ) {}
 
   resolveWebviewView(
@@ -72,6 +81,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage((msg) => {
       void this.handleWebviewMessage(msg);
+    });
+    webviewView.onDidDispose(() => {
+      if (this.view === webviewView) {
+        this.view = undefined;
+      }
+      logInfo("Sidebar chat webview disposed");
+      this.denyAllPendingApprovals("webview disposed");
     });
   }
 
@@ -147,11 +163,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case "approve":
         case "deny": {
           const id = String(msg.toolCallId ?? "");
-          const pending = this.pendingApprovals.get(id);
-          if (pending) {
-            pending.resolve(msg.type === "approve");
-            this.pendingApprovals.delete(id);
-          }
+          this.settleApproval(id, msg.type === "approve");
           break;
         }
         case "searchMentions": {
@@ -201,9 +213,47 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           sess?.loadMessages(saved.messages);
           this.post({ type: "cleared", reason: "loadSession" });
           for (const m of saved.messages) {
-            if (m.role === "user") this.post({ type: "user", text: m.content });
-            if (m.role === "assistant" && m.content) {
-              this.post({ type: "agent", event: { type: "assistant_done", text: m.content } });
+            if (m.role === "user") {
+              this.post({ type: "user", text: m.content });
+              continue;
+            }
+            if (m.role === "assistant") {
+              if (m.toolCalls?.length) {
+                for (const tc of m.toolCalls) {
+                  this.post({
+                    type: "agent",
+                    event: {
+                      type: "tool_request",
+                      toolName: tc.name,
+                      toolCallId: tc.id,
+                      summary: summarizeToolRequest(tc.name, {}),
+                      args: {},
+                    },
+                  });
+                }
+              }
+              if (m.content) {
+                this.post({
+                  type: "agent",
+                  event: { type: "assistant_done", text: m.content },
+                });
+              }
+              continue;
+            }
+            if (m.role === "tool") {
+              const preview = (m.content || "").slice(0, 500);
+              const ok = !/^ERROR:/i.test(m.content || "");
+              this.post({
+                type: "agent",
+                event: {
+                  type: "tool_result",
+                  toolName: m.name || "tool",
+                  toolCallId: m.toolCallId || `tool_${Math.random().toString(36).slice(2, 8)}`,
+                  ok,
+                  summary: ok ? "ok" : "erro",
+                  preview,
+                },
+              });
             }
           }
           break;
@@ -316,6 +366,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     panel.onDidDispose(() => {
       if (this.panel === panel) this.panel = undefined;
       logInfo("Chat editor panel disposed");
+      this.denyAllPendingApprovals("panel disposed");
     });
   }
 
@@ -614,6 +665,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         (ev) => this.emitAgentEvent(ev),
         (req) => this.requestApproval(req)
       );
+      this.session.checkpoints.bindState(this.workspaceState);
     } else {
       this.session.updateProvider(rebuilt.provider, rebuilt.config);
     }
@@ -654,6 +706,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: "agent", event: ev });
   }
 
+  private settleApproval(toolCallId: string, ok: boolean): boolean {
+    const pending = this.pendingApprovals.get(toolCallId);
+    if (!pending) {
+      return false;
+    }
+    clearTimeout(pending.timer);
+    this.pendingApprovals.delete(toolCallId);
+    pending.resolve(ok);
+    return true;
+  }
+
+  private denyAllPendingApprovals(reason: string): void {
+    if (this.pendingApprovals.size === 0) {
+      return;
+    }
+    const ids = [...this.pendingApprovals.keys()];
+    for (const id of ids) {
+      this.settleApproval(id, false);
+    }
+    logWarn("Denied pending approvals", { reason, count: ids.length, ids });
+    this.post({
+      type: "agent",
+      event: {
+        type: "status",
+        text: `Pending approvals denied (${reason}).`,
+      },
+    });
+  }
+
   private requestApproval(req: {
     toolName: string;
     toolCallId: string;
@@ -662,7 +743,44 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     diff?: DiffProposal;
   }): Promise<boolean> {
     return new Promise((resolve) => {
-      this.pendingApprovals.set(req.toolCallId, { resolve });
+      const timer = setTimeout(() => {
+        if (!this.settleApproval(req.toolCallId, false)) {
+          return;
+        }
+        const msg = `Approval timed out after ${APPROVAL_TIMEOUT_MS / 1000}s — denied (${req.toolName}).`;
+        logWarn(msg, { toolCallId: req.toolCallId, toolName: req.toolName });
+        this.post({
+          type: "agent",
+          event: { type: "status", text: msg },
+        });
+        this.post({ type: "error", text: msg });
+      }, APPROVAL_TIMEOUT_MS);
+
+      this.pendingApprovals.set(req.toolCallId, { resolve, timer });
+
+      const detail = req.diff
+        ? `${req.diff.isNew ? "Create" : "Edit"} ${req.diff.path}`
+        : req.toolName;
+      const hostMessage = `Forge Agent (${req.risk}): ${detail}`;
+
+      const showHostFallback = (): void => {
+        void vscode.window
+          .showWarningMessage(hostMessage, "Approve", "Deny")
+          .then((choice) => {
+            if (choice === undefined) {
+              // Dismissed — leave pending for webview/timeout (race: first answer wins).
+              return;
+            }
+            this.settleApproval(req.toolCallId, choice === "Approve");
+          });
+      };
+
+      // No webview/panel: prefer host dialog immediately (still race-safe with timeout).
+      if (!this.hasView()) {
+        showHostFallback();
+        return;
+      }
+
       this.post({
         type: "approval",
         toolName: req.toolName,
@@ -684,24 +802,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           : undefined,
       });
 
-      if (!this.view?.visible) {
-        const detail = req.diff
-          ? `${req.diff.isNew ? "Criar" : "Editar"} ${req.diff.path}`
-          : req.toolName;
-        void vscode.window
-          .showWarningMessage(
-            `Forge Agent (${req.risk}): ${detail}`,
-            "Permitir",
-            "Recusar"
-          )
-          .then((choice) => {
-            if (!this.pendingApprovals.has(req.toolCallId)) {
-              return;
-            }
-            this.pendingApprovals.delete(req.toolCallId);
-            resolve(choice === "Permitir");
-          });
-      }
+      // Also show host fallback after posting approval UI (non-modal; first answer wins).
+      showHostFallback();
     });
   }
 
@@ -710,37 +812,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!trimmed) {
       return;
     }
-    this.post({ type: "user", text: trimmed });
+    beginLogRun("send");
+    try {
+      this.post({ type: "user", text: trimmed });
 
-    if (trimmed === "/help" || trimmed.startsWith("/help ")) {
-      const lines = SLASH_COMMANDS.map((c) => `/${c.name} — ${c.description}`);
-      this.post({
-        type: "agent",
-        event: { type: "assistant_done", text: "Comandos slash:\n" + lines.join("\n") },
-      });
-      this.post({ type: "agent", event: { type: "done" } });
-      return;
-    }
-
-    const { command, rest } = parseSlash(trimmed);
-    let prompt = trimmed;
-    if (command) {
-      if (command.autonomy) {
-        await setAutonomy(command.autonomy);
-        await this.refreshSessionConfig();
-        await this.pushConfig();
+      if (trimmed === "/help" || trimmed.startsWith("/help ")) {
+        const lines = SLASH_COMMANDS.map((c) => `/${c.name} — ${c.description}`);
+        this.post({
+          type: "agent",
+          event: { type: "assistant_done", text: "Comandos slash:\n" + lines.join("\n") },
+        });
+        this.post({ type: "agent", event: { type: "done" } });
+        return;
       }
-      prompt = expandSlash(command, rest);
-    }
 
-    const session = await this.ensureSession();
-    if (!session) {
-      this.post({ type: "agent", event: { type: "done" } });
-      return;
+      const { command, rest } = parseSlash(trimmed);
+      let prompt = trimmed;
+      if (command) {
+        if (command.autonomy) {
+          await setAutonomy(command.autonomy);
+          await this.refreshSessionConfig();
+          await this.pushConfig();
+        }
+        prompt = expandSlash(command, rest);
+      }
+
+      const session = await this.ensureSession();
+      if (!session) {
+        this.post({ type: "agent", event: { type: "done" } });
+        return;
+      }
+      const expanded = await expandUserMessage(prompt);
+      await session.run(expanded);
+      await this.persistSession();
+    } finally {
+      endLogRun();
     }
-    const expanded = await expandUserMessage(prompt);
-    await session.run(expanded);
-    await this.persistSession();
   }
 
   private async persistSession(): Promise<void> {

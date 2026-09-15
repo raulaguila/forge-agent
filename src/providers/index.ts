@@ -33,9 +33,18 @@ function usageFromOpenAi(body: any, model: string): TokenUsage | undefined {
   };
 }
 
-function emitFullDelta(req: CompletionRequest, text: string): void {
-  if (text && req.onDelta) {
-    req.onDelta(text);
+/** Fake streaming for providers without SSE — keeps the UI feeling alive. */
+async function emitChunkedDelta(
+  req: CompletionRequest,
+  text: string,
+  chunkSize = 48
+): Promise<void> {
+  if (!text) return;
+  if (!req.onDelta) return;
+  for (let i = 0; i < text.length; i += chunkSize) {
+    if (req.signal?.aborted) return;
+    req.onDelta(text.slice(i, i + chunkSize));
+    await new Promise((r) => setTimeout(r, 8));
   }
 }
 
@@ -380,7 +389,7 @@ export class OllamaProvider implements LlmProvider {
       toolCalls: toolCalls?.length ? toolCalls : undefined,
     };
 
-    emitFullDelta(req, message.content);
+    await emitChunkedDelta(req, message.content);
 
     return {
       message,
@@ -528,7 +537,7 @@ export class AnthropicProvider implements LlmProvider {
           ? "length"
           : "stop";
 
-    emitFullDelta(req, message.content);
+    await emitChunkedDelta(req, message.content);
     const usage = body?.usage
       ? {
           inputTokens: Number(body.usage.input_tokens ?? 0),
@@ -716,7 +725,7 @@ export class GeminiProvider implements LlmProvider {
         ? "length"
         : "stop";
 
-    emitFullDelta(req, message.content);
+    await emitChunkedDelta(req, message.content);
     const um = body?.usageMetadata;
     const usage = um
       ? {

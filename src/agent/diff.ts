@@ -3,33 +3,15 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import type { DiffProposal } from "../types";
+import { resolveWorkspacePath } from "./workspacePath";
 
 const pendingTemps = new Map<string, string>();
-
-function workspaceRoot(): string {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) {
-    throw new Error("Nenhuma pasta aberta no workspace.");
-  }
-  return folder.uri.fsPath;
-}
-
-export function resolveWorkspacePath(relOrAbs: string): vscode.Uri {
-  const root = workspaceRoot();
-  const abs = path.isAbsolute(relOrAbs) ? relOrAbs : path.join(root, relOrAbs);
-  const normalized = path.normalize(abs);
-  const rootNorm = path.normalize(root);
-  if (normalized !== rootNorm && !normalized.startsWith(rootNorm + path.sep)) {
-    throw new Error(`Path fora do workspace: ${relOrAbs}`);
-  }
-  return vscode.Uri.file(normalized);
-}
 
 async function readWorkspaceText(relOrAbs: string): Promise<{
   exists: boolean;
   content: string;
 }> {
-  const uri = resolveWorkspacePath(relOrAbs);
+  const uri = await resolveWorkspacePath(relOrAbs);
   try {
     const data = await vscode.workspace.fs.readFile(uri);
     return { exists: true, content: Buffer.from(data).toString("utf8") };
@@ -83,7 +65,7 @@ export async function buildEditProposal(args: {
 }
 
 export async function showDiffProposal(proposal: DiffProposal): Promise<void> {
-  const target = resolveWorkspacePath(proposal.path);
+  const target = await resolveWorkspacePath(proposal.path);
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "forge-agent-"));
   const tmpFile = path.join(tmpDir, path.basename(proposal.path) || "proposal.txt");
   await fs.writeFile(tmpFile, proposal.newContent, "utf8");
@@ -98,7 +80,7 @@ export async function showDiffProposal(proposal: DiffProposal): Promise<void> {
 }
 
 export async function applyDiffProposal(proposal: DiffProposal): Promise<string> {
-  const uri = resolveWorkspacePath(proposal.path);
+  const uri = await resolveWorkspacePath(proposal.path);
   const dir = vscode.Uri.file(path.dirname(uri.fsPath));
   await vscode.workspace.fs.createDirectory(dir);
   await vscode.workspace.fs.writeFile(uri, Buffer.from(proposal.newContent, "utf8"));

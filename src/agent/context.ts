@@ -7,6 +7,7 @@ import {
   getPreferredTextEditor,
   listOpenEditorInfos,
 } from "./editorContext";
+import { resolveWorkspacePath, toRelativePath } from "./workspacePath";
 
 const MAX_FILE_CHARS = 80_000;
 const MAX_DIR_ENTRIES = 200;
@@ -49,7 +50,7 @@ export async function suggestMentions(query: string): Promise<MentionSuggestion[
   );
 
   for (const uri of files) {
-    const rel = vscode.workspace.asRelativePath(uri);
+    const rel = toRelativePath(uri);
     if (q && !rel.toLowerCase().includes(q)) {
       continue;
     }
@@ -65,7 +66,7 @@ export async function suggestMentions(query: string): Promise<MentionSuggestion[
 
   const folders = new Set<string>();
   for (const uri of files) {
-    const rel = vscode.workspace.asRelativePath(uri);
+    const rel = toRelativePath(uri);
     const dir = path.posix.dirname(rel.replace(/\\/g, "/"));
     if (dir && dir !== ".") {
       folders.add(dir);
@@ -89,12 +90,8 @@ export async function suggestMentions(query: string): Promise<MentionSuggestion[
 }
 
 async function readFileBlock(rel: string): Promise<string> {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.[0]) {
-    return `(sem workspace) ${rel}`;
-  }
-  const uri = vscode.Uri.joinPath(folders[0].uri, rel);
   try {
+    const uri = await resolveWorkspacePath(rel);
     const data = await vscode.workspace.fs.readFile(uri);
     let text = Buffer.from(data).toString("utf8");
     if (text.length > MAX_FILE_CHARS) {
@@ -107,13 +104,9 @@ async function readFileBlock(rel: string): Promise<string> {
 }
 
 async function readFolderBlock(rel: string): Promise<string> {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.[0]) {
-    return `(sem workspace) ${rel}`;
-  }
   const clean = rel.replace(/\/$/, "");
-  const uri = vscode.Uri.joinPath(folders[0].uri, clean);
   try {
+    const uri = await resolveWorkspacePath(clean);
     const entries = await vscode.workspace.fs.readDirectory(uri);
     const lines = entries
       .slice(0, MAX_DIR_ENTRIES)
@@ -137,7 +130,7 @@ function selectionBlock(): string {
   if (!ctx || ctx.selection.isEmpty) {
     return "### Selection\n(nenhuma seleção ativa)";
   }
-  const rel = vscode.workspace.asRelativePath(ctx.document.uri);
+  const rel = toRelativePath(ctx.document.uri);
   const text = ctx.document.getText(ctx.selection);
   return `### Selection: ${rel} L${ctx.selection.start.line + 1}-${ctx.selection.end.line + 1}\n\`\`\`\n${text}\n\`\`\``;
 }
@@ -147,7 +140,7 @@ function activeBlock(): string {
   if (!doc) {
     return "### Active file\n(nenhum editor ativo — foque um arquivo no editor e tente de novo)";
   }
-  const rel = vscode.workspace.asRelativePath(doc.uri);
+  const rel = toRelativePath(doc.uri);
   let text = doc.getText();
   if (text.length > MAX_FILE_CHARS) {
     text = text.slice(0, MAX_FILE_CHARS) + `\n…[truncated]`;
@@ -257,7 +250,7 @@ export function selectionAsPrompt(prefix: string): string | undefined {
   if (!ctx || ctx.selection.isEmpty) {
     return undefined;
   }
-  const rel = vscode.workspace.asRelativePath(ctx.document.uri);
+  const rel = toRelativePath(ctx.document.uri);
   const text = ctx.document.getText(ctx.selection);
   return `${prefix}\n\n@${rel}\n\`\`\`\n${text}\n\`\`\``;
 }
