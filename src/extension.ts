@@ -62,6 +62,7 @@ function activateSafe(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("forgeAgent.openChat", () => chat.openChat()),
+    vscode.commands.registerCommand("forgeAgent.openChatPanel", () => chat.openChatPanel()),
     vscode.commands.registerCommand("forgeAgent.newChat", () => chat.newChat()),
     vscode.commands.registerCommand("forgeAgent.stopAgent", () => chat.stop()),
     vscode.commands.registerCommand("forgeAgent.cycleAutonomy", () =>
@@ -117,6 +118,23 @@ function activateSafe(context: vscode.ExtensionContext): void {
     })
   );
   logInfo("Webview provider registered", ChatViewProvider.viewType);
+
+  void (async () => {
+    const cmds = await vscode.commands.getCommands(true);
+    const related = cmds.filter(
+      (c) =>
+        c.includes("forgeAgent") ||
+        c.includes("forge-agent") ||
+        c.includes(ChatViewProvider.viewType)
+    );
+    logInfo("Forge-related commands", related);
+    const focusCmd = `${ChatViewProvider.viewType}.focus`;
+    logInfo("Sidebar focus command present", {
+      focusCmd,
+      present: cmds.includes(focusCmd),
+      containerCmdPresent: cmds.includes("workbench.view.extension.forge-agent"),
+    });
+  })();
 }
 
 export function deactivate(): void {}

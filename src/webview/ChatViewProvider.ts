@@ -22,6 +22,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "forgeAgent.chatView";
 
   private view?: vscode.WebviewView;
+  private panel?: vscode.WebviewPanel;
   private session?: AgentSession;
   private pendingApprovals = new Map<string, { resolve: (ok: boolean) => void }>();
   private currentSessionId?: string;
@@ -47,6 +48,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   ): void {
     this.view = webviewView;
     logInfo("Resolving chat webview");
+    webviewView.onDidChangeVisibility(() => {
+      logInfo("Sidebar webview visibility", { visible: webviewView.visible });
+    });
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
@@ -69,7 +73,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </body></html>`;
     }
 
-    webviewView.webview.onDidReceiveMessage(async (msg) => {
+    webviewView.webview.onDidReceiveMessage((msg) => {
+      void this.handleWebviewMessage(msg);
+    });
+  }
+
+  private async handleWebviewMessage(msg: any): Promise<void> {
       switch (msg.type) {
         case "ready":
           logInfo("Webview ready");
@@ -236,11 +245,62 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         default:
           break;
       }
-    });
   }
 
   async openChat(): Promise<void> {
-    await vscode.commands.executeCommand("forgeAgent.chatView.focus");
+    logInfo("openChat: revealing sidebar container + view");
+    try {
+      await vscode.commands.executeCommand("workbench.view.extension.forge-agent");
+    } catch (e) {
+      logWarn("openChat: could not open activity container", e);
+    }
+    try {
+      await vscode.commands.executeCommand(`${ChatViewProvider.viewType}.focus`);
+    } catch (e) {
+      logWarn("openChat: sidebar focus failed", e);
+    }
+
+    // If the sidebar webview never resolved (common when the view is hidden
+    // or the container is empty), fall back to an editor panel so the UI
+    // is never a blank side bar.
+    await new Promise((r) => setTimeout(r, 400));
+    if (!this.view) {
+      logWarn("openChat: sidebar webview not resolved — opening editor panel fallback");
+      void vscode.window.showInformationMessage(
+        "Forge: a sidebar não montou o chat; abrindo no editor. Veja Output → Forge Agent."
+      );
+      await this.openChatPanel();
+    } else {
+      logInfo("openChat: sidebar webview is active");
+      this.view.show?.(true);
+    }
+  }
+
+  async openChatPanel(): Promise<void> {
+    if (this.panel) {
+      this.panel.reveal(vscode.ViewColumn.Beside, false);
+      return;
+    }
+    logInfo("Creating Forge chat editor panel");
+    const panel = vscode.window.createWebviewPanel(
+      "forgeAgent.chatPanel",
+      "Forge Chat",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
+      }
+    );
+    this.panel = panel;
+    panel.webview.html = this.getHtml(panel.webview);
+    panel.webview.onDidReceiveMessage((msg) => {
+      void this.handleWebviewMessage(msg);
+    });
+    panel.onDidDispose(() => {
+      if (this.panel === panel) this.panel = undefined;
+      logInfo("Chat editor panel disposed");
+    });
   }
 
   async newChat(): Promise<void> {
@@ -439,6 +499,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private post(message: unknown): void {
     void this.view?.webview.postMessage(message);
+    void this.panel?.webview.postMessage(message);
   }
 
   showSettings(): void {
@@ -446,7 +507,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   hasView(): boolean {
-    return Boolean(this.view);
+    return Boolean(this.view || this.panel);
   }
 
   private async pushConfig(): Promise<void> {

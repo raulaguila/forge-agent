@@ -2,7 +2,7 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.15.4",
+  "version": "0.15.5",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"
@@ -25,7 +25,12 @@
     "chatgpt",
     "claude"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:forgeAgent.chatView",
+    "onCommand:forgeAgent.openChat",
+    "onCommand:forgeAgent.openChatPanel"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -42,7 +47,8 @@
         {
           "type": "webview",
           "id": "forgeAgent.chatView",
-          "name": "Chat"
+          "name": "Chat",
+          "visibility": "visible"
         }
       ]
     },
@@ -51,6 +57,11 @@
         "command": "forgeAgent.openChat",
         "title": "Forge Agent: Open Chat",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "forgeAgent.openChatPanel",
+        "title": "Forge Agent: Open Chat in Editor",
+        "icon": "$(window)"
       },
       {
         "command": "forgeAgent.setApiKey",
