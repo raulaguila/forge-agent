@@ -2,6 +2,10 @@
 
 All notable changes to Forge Agent are documented here.
 
+## [0.16.2] — 2026-09-15
+
+- Feat: janela de contexto por modelo — extrai da API (OpenRouter/`context_length`, Gemini `inputTokenLimit`, Ollama `/api/show`, etc.), usa mapa curado ou padrão 128k, e permite editar no perfil
+
 ## [0.16.0] — 2026-03-24
 
 ### Security

@@ -283,7 +283,14 @@
   function selectModel(id, label) {
     setModelLabel(label || id);
     closeModelMenu();
-    if (!demo) vscode.postMessage({ type: "selectModel", model: id });
+    const info = models.find((m) => m.id === id);
+    if (!demo) {
+      vscode.postMessage({
+        type: "selectModel",
+        model: id,
+        contextWindow: info && info.contextWindow,
+      });
+    }
   }
 
   function openEditorSettings() {

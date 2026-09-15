@@ -263,10 +263,21 @@ select#model {
   color: var(--danger);
 }
 
-#keyStatus {
+#keyStatus,
+#contextHint,
+#modelStatus {
   font-style: normal;
   margin-left: 6px;
   font-size: 11px;
+  color: var(--muted);
+}
+
+.hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 @media (max-width: 820px) {

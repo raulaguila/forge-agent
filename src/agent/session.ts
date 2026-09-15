@@ -114,7 +114,9 @@ export class AgentSession {
 
   /** Drop/truncate old turns so long chats stay within a soft context budget. */
   private compactMessages(): void {
-    const MAX_CHARS = 120_000;
+    // ~3 chars/token soft budget from configured context window (API / user / default).
+    const tokens = Math.max(1_024, this.config.contextWindow || 128_000);
+    const MAX_CHARS = Math.max(20_000, Math.floor(tokens * 3));
     const KEEP_RECENT = 40;
     if (this.messages.length <= 2) return;
 

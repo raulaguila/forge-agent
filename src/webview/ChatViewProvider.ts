@@ -148,7 +148,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case "selectModel": {
           const model = String(msg.model ?? "").trim();
           if (model) {
-            await setActiveModel(model);
+            const ctx = msg.contextWindow != null ? Number(msg.contextWindow) : undefined;
+            await setActiveModel(model, ctx);
             await this.refreshSessionConfig();
             await this.pushConfig();
           }
@@ -527,8 +528,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       models.map((m) => ({
         label: m.label,
         description: m.id === config.model ? "ativo" : undefined,
-        detail: m.detail,
+        detail: m.detail || `${m.contextWindow.toLocaleString()} tokens`,
         id: m.id,
+        contextWindow: m.contextWindow,
       })),
       {
         title: `Modelos — ${config.profileName || config.provider}`,
@@ -537,7 +539,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     );
     if (!pick) return;
-    await setActiveModel(pick.id);
+    await setActiveModel(pick.id, pick.contextWindow);
     await this.refreshSessionConfig();
     await this.pushConfig();
   }
@@ -617,12 +619,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       });
       this.post({
         type: "models",
-        models: models.map((m) => ({ id: m.id, label: m.label || m.id })),
+        models: models.map((m) => ({
+          id: m.id,
+          label: m.label || m.id,
+          contextWindow: m.contextWindow,
+        })),
       });
     } catch {
       this.post({
         type: "models",
-        models: config.model ? [{ id: config.model, label: config.model }] : [],
+        models: config.model
+          ? [{ id: config.model, label: config.model, contextWindow: config.contextWindow }]
+          : [],
       });
     }
   }

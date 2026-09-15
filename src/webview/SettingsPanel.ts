@@ -1,11 +1,21 @@
 import * as vscode from "vscode";
 import type { AutonomyMode, ProviderId, ProviderProfile } from "../types";
 import { defaultBaseUrl, defaultModel, providerRequiresApiKey } from "../providers";
-import { listModels } from "../providers/models";
+import {
+  contextWindowForModelId,
+  DEFAULT_CONTEXT_WINDOW,
+  listModels,
+} from "../providers/models";
 import { labelFor, ProfileStore, syncSettingsFromProfile } from "../agent/profiles";
 import { KeyStore } from "../secrets/keys";
 import { readConfig, setAutonomy } from "../config";
 import { openProjectRules } from "../agent/rules";
+
+function parseContextWindow(value: unknown, model: string): number {
+  const n = Number(value);
+  if (Number.isFinite(n) && n >= 1_024) return Math.floor(n);
+  return contextWindowForModelId(model);
+}
 
 const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
   { id: "openai", label: "OpenAI" },
@@ -133,13 +143,15 @@ export class SettingsPanel {
       case "createProfile": {
         const provider = (String(msg.provider ?? "openai") || "openai") as ProviderId;
         const requestedModel = String(msg.model ?? "").trim();
+        const model = requestedModel || defaultModel(provider);
         const profile: ProviderProfile = {
           id: newProfileId(),
           name: String(msg.name ?? "").trim() || labelFor(provider),
           provider,
-          model: requestedModel || defaultModel(provider),
+          model,
           baseUrl: String(msg.baseUrl ?? "").replace(/\/$/, "") || defaultBaseUrl(provider),
           tlsInsecure: Boolean(msg.tlsInsecure),
+          contextWindow: parseContextWindow(msg.contextWindow, model),
         };
         await this.profileStore.upsert(profile);
         await this.profileStore.setActive(profile.id);
@@ -156,6 +168,7 @@ export class SettingsPanel {
         });
         if (!requestedModel && models[0]) {
           profile.model = models[0].id;
+          profile.contextWindow = models[0].contextWindow;
           await this.profileStore.upsert(profile);
           await syncSettingsFromProfile(profile);
           await this.pushState();
@@ -186,15 +199,20 @@ export class SettingsPanel {
         const provider = (String(msg.provider ?? existing.provider) ||
           existing.provider) as ProviderId;
         const requestedModel = String(msg.model ?? existing.model).trim();
+        const model = requestedModel || defaultModel(provider);
         const updated: ProviderProfile = {
           id,
           name: String(msg.name ?? existing.name).trim() || existing.name,
           provider,
-          model: requestedModel || defaultModel(provider),
+          model,
           baseUrl:
             String(msg.baseUrl ?? existing.baseUrl).replace(/\/$/, "") ||
             defaultBaseUrl(provider),
           tlsInsecure: Boolean(msg.tlsInsecure),
+          contextWindow: parseContextWindow(
+            msg.contextWindow ?? existing.contextWindow,
+            model
+          ),
         };
         await this.profileStore.upsert(updated);
         if (this.profileStore.active()?.id === id) {
@@ -258,6 +276,7 @@ export class SettingsPanel {
         const profile = this.profileStore.get(id);
         if (!profile || !model) break;
         profile.model = model;
+        profile.contextWindow = parseContextWindow(msg.contextWindow, model);
         await this.profileStore.upsert(profile);
         if (this.profileStore.active()?.id === id) {
           await syncSettingsFromProfile(profile);
@@ -328,7 +347,9 @@ export class SettingsPanel {
     apiKey?: string;
     autoSelect?: boolean;
     selected?: string;
-  }): Promise<Array<{ id: string; label: string; detail?: string }>> {
+  }): Promise<
+    Array<{ id: string; label: string; detail?: string; contextWindow: number }>
+  > {
     const profile = opts.profileId
       ? this.profileStore.get(opts.profileId)
       : this.profileStore.active();
@@ -365,6 +386,17 @@ export class SettingsPanel {
       let selected = opts.selected ?? profile?.model ?? "";
       if (opts.autoSelect && models.length && !models.some((m) => m.id === selected)) {
         selected = models[0].id;
+      }
+      const picked = models.find((m) => m.id === selected);
+      if (profile && picked && (opts.autoSelect || !profile.contextWindow)) {
+        profile.model = picked.id;
+        profile.contextWindow = picked.contextWindow;
+        await this.profileStore.upsert(profile);
+        if (this.profileStore.active()?.id === profile.id) {
+          await syncSettingsFromProfile(profile);
+        }
+        await this.onChanged();
+        await this.pushState();
       }
       this.post({
         type: "models",
@@ -463,6 +495,11 @@ export class SettingsPanel {
                 </select>
                 <button id="btnListModels" class="ghost" type="button">Atualizar</button>
               </div>
+            </label>
+            <label>
+              <span>Janela de contexto (tokens) <em id="contextHint"></em></span>
+              <input id="contextWindow" type="number" min="1024" step="1024" placeholder="128000" />
+              <small class="hint">Extraído da API quando disponível; senão padrão do modelo. Você pode editar.</small>
             </label>
             <div class="actions">
               <button id="btnSaveProfile" class="primary" type="submit">Salvar perfil</button>

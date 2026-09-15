@@ -112,6 +112,8 @@ export interface ProviderProfile {
   model: string;
   baseUrl: string;
   tlsInsecure: boolean;
+  /** Context window in tokens (from API / curated / user edit). */
+  contextWindow?: number;
 }
 
 export interface ForgeConfig {
@@ -119,6 +121,8 @@ export interface ForgeConfig {
   model: string;
   baseUrl: string;
   tlsInsecure: boolean;
+  /** Soft context budget in tokens for compaction / display. */
+  contextWindow: number;
   maxToolRounds: number;
   autonomy: AutonomyMode;
   autoApproveReads: boolean;

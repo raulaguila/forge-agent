@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { ProviderId, ProviderProfile } from "../types";
 import { defaultBaseUrl, defaultModel } from "../providers";
+import { contextWindowForModelId } from "../providers/models";
 
 const PROFILES_KEY = "forgeAgent.profiles";
 const ACTIVE_KEY = "forgeAgent.activeProfileId";
@@ -69,13 +70,19 @@ export class ProfileStore {
     }
     const c = vscode.workspace.getConfiguration("forgeAgent");
     const provider = c.get<ProviderId>("provider", "openai");
+    const model = c.get<string>("model", defaultModel(provider));
+    const storedCtx = c.get<number>("contextWindow");
     const profile: ProviderProfile = {
       id: newId(),
       name: labelFor(provider),
       provider,
-      model: c.get<string>("model", defaultModel(provider)),
+      model,
       baseUrl: (c.get<string>("baseUrl", "") || "").replace(/\/$/, "") || defaultBaseUrl(provider),
       tlsInsecure: c.get<boolean>("tlsInsecure", false),
+      contextWindow:
+        Number.isFinite(storedCtx) && (storedCtx as number) >= 1_024
+          ? Math.floor(storedCtx as number)
+          : contextWindowForModelId(model),
     };
     await this.upsert(profile);
     await this.state.update(ACTIVE_KEY, profile.id);
@@ -103,10 +110,12 @@ export function labelFor(provider: ProviderId): string {
 export async function syncSettingsFromProfile(profile: ProviderProfile): Promise<void> {
   const c = vscode.workspace.getConfiguration("forgeAgent");
   const target = vscode.ConfigurationTarget.Global;
+  const contextWindow = contextWindowForModelId(profile.model, profile.contextWindow);
   await c.update("provider", profile.provider, target);
   await c.update("model", profile.model, target);
   await c.update("baseUrl", profile.baseUrl || "", target);
   await c.update("tlsInsecure", profile.tlsInsecure, target);
+  await c.update("contextWindow", contextWindow, target);
 }
 
 export async function createProfileInteractive(
@@ -182,6 +191,7 @@ export async function createProfileInteractive(
     model,
     baseUrl,
     tlsInsecure,
+    contextWindow: contextWindowForModelId(model),
   };
   await store.upsert(profile);
   await store.setActive(profile.id);

@@ -2,7 +2,7 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "publisher": "forge-agent",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -266,6 +266,12 @@
           "type": "string",
           "default": "gpt-4o",
           "description": "Modelo (ex.: gpt-4o, claude-sonnet-4-20250514, gemini-2.0-flash, llama3.1)."
+        },
+        "forgeAgent.contextWindow": {
+          "type": "number",
+          "default": 128000,
+          "minimum": 1024,
+          "description": "Janela de contexto do modelo em tokens. Preferencialmente preenchida pela API do provedor; editável se o valor não estiver disponível ou precisar de ajuste."
         },
         "forgeAgent.baseUrl": {
           "type": "string",

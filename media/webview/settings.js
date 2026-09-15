@@ -12,6 +12,8 @@
     provider: $("provider"),
     model: $("model"),
     modelStatus: $("modelStatus"),
+    contextWindow: $("contextWindow"),
+    contextHint: $("contextHint"),
     baseUrl: $("baseUrl"),
     tlsInsecure: $("tlsInsecure"),
     apiKey: $("apiKey"),
@@ -51,6 +53,27 @@
 
   function setModelStatus(text) {
     els.modelStatus.textContent = text ? "· " + text : "";
+  }
+
+  function setContextHint(text) {
+    if (!els.contextHint) return;
+    els.contextHint.textContent = text ? "· " + text : "";
+  }
+
+  function applyContextFromModel(modelId, source) {
+    if (!els.contextWindow) return;
+    const info = availableModels.find((m) => m.id === modelId);
+    if (info && info.contextWindow) {
+      els.contextWindow.value = String(info.contextWindow);
+      setContextHint(
+        info.contextFromApi ? "da API" : source === "default" ? "padrão" : "sugerido"
+      );
+      return;
+    }
+    if (!els.contextWindow.value) {
+      els.contextWindow.value = "128000";
+      setContextHint("padrão");
+    }
   }
 
   function fillProviders() {
@@ -161,6 +184,13 @@
       els.model.appendChild(opt);
       els.model.value = p.model;
     }
+    if (els.contextWindow) {
+      els.contextWindow.value =
+        p?.contextWindow && p.contextWindow >= 1024
+          ? String(p.contextWindow)
+          : "128000";
+      setContextHint(p?.contextWindow ? "salvo" : "padrão");
+    }
     els.btnDeleteProfile.disabled = mode === "create" || state.profiles.length <= 1;
     els.btnActivate.disabled = mode === "create";
     els.btnClearKey.disabled = mode === "create" || !p?.hasKey;
@@ -186,6 +216,7 @@
       baseUrl: els.baseUrl.value,
       tlsInsecure: els.tlsInsecure.checked,
       apiKey: els.apiKey.value,
+      contextWindow: Number(els.contextWindow?.value || 128000),
     };
   }
 
@@ -251,6 +282,7 @@
       model: "",
       baseUrl: "",
       tlsInsecure: false,
+      contextWindow: 128000,
       hasKey: false,
       requiresKey: true,
     });
@@ -277,14 +309,30 @@
   });
 
   els.model.addEventListener("change", () => {
+    applyContextFromModel(els.model.value);
     if (mode === "edit" && els.profileId.value && els.model.value) {
       vscode.postMessage({
         type: "setModel",
         id: els.profileId.value,
         model: els.model.value,
+        contextWindow: Number(els.contextWindow?.value || 128000),
       });
     }
   });
+
+  if (els.contextWindow) {
+    els.contextWindow.addEventListener("change", () => {
+      setContextHint("editado");
+      if (mode === "edit" && els.profileId.value && els.model.value) {
+        vscode.postMessage({
+          type: "setModel",
+          id: els.profileId.value,
+          model: els.model.value,
+          contextWindow: Number(els.contextWindow.value || 128000),
+        });
+      }
+    });
+  }
 
   els.profileForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -385,6 +433,9 @@
       populateModelSelect(models, msg.selected);
       if (msg.autoSelect && msg.selected) {
         els.model.value = msg.selected;
+        applyContextFromModel(els.model.value);
+      } else if (els.model.value && (!els.contextWindow?.value || Number(els.contextWindow.value) < 1024)) {
+        applyContextFromModel(els.model.value);
       }
       return;
     }
