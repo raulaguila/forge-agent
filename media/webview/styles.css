@@ -990,6 +990,17 @@ html, body {
 
 .bar-left { flex: 1; }
 
+.active-file-hint {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: var(--mono);
+  opacity: 0.9;
+}
+
 .select-wrap {
   position: relative;
   max-width: 48%;

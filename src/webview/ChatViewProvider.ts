@@ -1,7 +1,12 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { cycleAutonomy, readConfig, setActiveModel, setAutonomy } from "../config";
-import { sanitizeArgsForUi, summarizeToolRequest } from "../agent/toolSummary";
+import {
+  previewToolOutput,
+  sanitizeArgsForUi,
+  summarizeToolRequest,
+  summarizeToolResult,
+} from "../agent/toolSummary";
 import { createProvider, providerRequiresApiKey } from "../providers";
 import { listModels } from "../providers/models";
 import { KeyStore } from "../secrets/keys";
@@ -10,6 +15,7 @@ import { expandUserMessage, suggestMentions } from "../agent/context";
 import { getPreferredSelection } from "../agent/editorContext";
 import { expandSlash, parseSlash, SLASH_COMMANDS } from "../agent/slash";
 import { openProjectRules } from "../agent/rules";
+import { activeFileRelativePath } from "../agent/editorContext";
 import { ProfileStore } from "../agent/profiles";
 import { SessionStore, titleFromMessages } from "../agent/sessions";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
@@ -211,6 +217,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.currentSessionId = saved.id;
           const sess = await this.ensureSession();
           sess?.loadMessages(saved.messages);
+          // reason:loadSession — webview must not treat this as a full home reset
           this.post({ type: "cleared", reason: "loadSession" });
           for (const m of saved.messages) {
             if (m.role === "user") {
@@ -220,14 +227,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (m.role === "assistant") {
               if (m.toolCalls?.length) {
                 for (const tc of m.toolCalls) {
+                  let args: Record<string, unknown> = {};
+                  try {
+                    args = JSON.parse(tc.arguments || "{}") as Record<string, unknown>;
+                  } catch {
+                    args = {};
+                  }
                   this.post({
                     type: "agent",
                     event: {
                       type: "tool_request",
                       toolName: tc.name,
                       toolCallId: tc.id,
-                      summary: summarizeToolRequest(tc.name, {}),
-                      args: {},
+                      summary: summarizeToolRequest(tc.name, args),
+                      args: sanitizeArgsForUi(args),
                     },
                   });
                 }
@@ -241,17 +254,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               continue;
             }
             if (m.role === "tool") {
-              const preview = (m.content || "").slice(0, 500);
-              const ok = !/^ERROR:/i.test(m.content || "");
+              const output = m.content || "";
+              const toolName = m.name || "tool";
+              const ok =
+                !/^ERROR:/i.test(output) &&
+                !/^Usuário recusou/i.test(output) &&
+                !/^Bloqueado no modo/i.test(output) &&
+                !/^Tool desconhecida:/i.test(output);
               this.post({
                 type: "agent",
                 event: {
                   type: "tool_result",
-                  toolName: m.name || "tool",
-                  toolCallId: m.toolCallId || `tool_${Math.random().toString(36).slice(2, 8)}`,
+                  toolName,
+                  toolCallId:
+                    m.toolCallId || `tool_${Math.random().toString(36).slice(2, 8)}`,
                   ok,
-                  summary: ok ? "ok" : "erro",
-                  preview,
+                  summary: summarizeToolResult(toolName, output),
+                  preview: previewToolOutput(output),
                 },
               });
             }
@@ -568,6 +587,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       hasKey,
       profileName: config.profileName || config.provider,
       profileId: config.profileId,
+      activeFile: activeFileRelativePath() || "",
     });
     this.postRecentSessions();
   }
@@ -959,7 +979,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           <button type="button" class="context-clear" id="btnClearContext" title="Ocultar">×</button>
         </div>
         <div id="mentionPopup" class="mention-popup hidden"></div>
-        <textarea id="input" rows="2" placeholder="Pergunte sobre o código…"></textarea>
+        <textarea id="input" rows="2" placeholder="Ask a follow-up…"></textarea>
         <div class="composer-bar">
           <div class="bar-left">
             <div class="select-wrap" id="modeWrap">
@@ -1027,6 +1047,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           </div>
 
           <div class="bar-right">
+            <span id="activeFileHint" class="active-file-hint hidden" title="Arquivo ativo"></span>
             <button id="btnStop" class="chip danger hidden" title="Parar" type="button">Parar</button>
             <button id="btnSend" class="send" type="button" title="Enviar (Enter)" aria-label="Enviar">
               <span class="send-icon" aria-hidden="true">↑</span>

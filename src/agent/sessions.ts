@@ -12,17 +12,27 @@ export interface SavedSession {
 const KEY = "forgeAgent.sessions";
 const MAX_SESSIONS = 40;
 const MAX_TOOL_CHARS = 8_000;
-const MAX_SESSION_CHARS = 1_500_000;
+/** Soft cap for one session's messages JSON (~2MB total store budget). */
+const MAX_SESSION_CHARS = 2_000_000;
+const MAX_STORE_CHARS = 2_000_000;
 
-function compactMessages(messages: ChatMessage[]): ChatMessage[] {
+function compactMessages(messages: ChatMessage[], toolMax = MAX_TOOL_CHARS): ChatMessage[] {
   return messages.map((m) => {
     if (m.role !== "tool") return m;
     const content = m.content ?? "";
-    if (content.length <= MAX_TOOL_CHARS) return m;
+    if (content.length <= toolMax) return m;
     return {
       ...m,
-      content: `${content.slice(0, MAX_TOOL_CHARS)}\n…[truncated ${content.length - MAX_TOOL_CHARS} chars]`,
+      content: `${content.slice(0, toolMax)}\n…[truncated ${content.length - toolMax} chars]`,
     };
+  });
+}
+
+function aggressiveTrimTools(messages: ChatMessage[], keepRecent = 12, cap = 400): ChatMessage[] {
+  return messages.map((m, i) => {
+    if (i > messages.length - keepRecent) return m;
+    if (m.role !== "tool" || (m.content?.length ?? 0) <= cap) return m;
+    return { ...m, content: `${m.content.slice(0, cap)}\n…[truncated]` };
   });
 }
 
@@ -45,19 +55,29 @@ export class SessionStore {
     };
 
     // Further trim oldest tool payloads if the session is huge
-    let size = JSON.stringify(compacted.messages).length;
-    if (size > MAX_SESSION_CHARS) {
-      compacted.messages = compacted.messages.map((m, i) => {
-        if (i > compacted.messages.length - 12) return m;
-        if (m.role !== "tool" || (m.content?.length ?? 0) < 400) return m;
-        return { ...m, content: `${m.content.slice(0, 400)}\n…[truncated]` };
-      });
-      size = JSON.stringify(compacted.messages).length;
+    if (JSON.stringify(compacted.messages).length > MAX_SESSION_CHARS) {
+      compacted.messages = aggressiveTrimTools(compacted.messages);
     }
 
-    const all = this.list().filter((s) => s.id !== compacted.id);
+    let all = this.list().filter((s) => s.id !== compacted.id);
     all.unshift(compacted);
-    await this.state.update(KEY, all.slice(0, MAX_SESSIONS));
+    all = all.slice(0, MAX_SESSIONS);
+
+    // Rough ~2MB store budget: shrink older sessions' tool payloads, then drop oldest.
+    let storeJson = JSON.stringify(all);
+    if (storeJson.length > MAX_STORE_CHARS) {
+      all = all.map((s, idx) => {
+        if (idx === 0) return s;
+        return { ...s, messages: aggressiveTrimTools(s.messages, 8, 200) };
+      });
+      storeJson = JSON.stringify(all);
+    }
+    while (storeJson.length > MAX_STORE_CHARS && all.length > 1) {
+      all.pop();
+      storeJson = JSON.stringify(all);
+    }
+
+    await this.state.update(KEY, all);
   }
 
   async remove(id: string): Promise<void> {

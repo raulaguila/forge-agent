@@ -37,14 +37,13 @@ function usageFromOpenAi(body: any, model: string): TokenUsage | undefined {
 async function emitChunkedDelta(
   req: CompletionRequest,
   text: string,
-  chunkSize = 48
+  chunkSize = 40
 ): Promise<void> {
-  if (!text) return;
-  if (!req.onDelta) return;
+  if (!text || !req.onDelta) return;
   for (let i = 0; i < text.length; i += chunkSize) {
     if (req.signal?.aborted) return;
     req.onDelta(text.slice(i, i + chunkSize));
-    await new Promise((r) => setTimeout(r, 8));
+    await new Promise((r) => setTimeout(r, 0));
   }
 }
 

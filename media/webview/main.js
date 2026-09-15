@@ -16,6 +16,7 @@
   const editBanner = document.getElementById("editBanner");
   const editFile = document.getElementById("editFile");
   const editMeta = document.getElementById("editMeta");
+  const activeFileHint = document.getElementById("activeFileHint");
 
   const btnSend = document.getElementById("btnSend");
   const btnStop = document.getElementById("btnStop");
@@ -45,6 +46,9 @@
   let streamNode = null;
   let streamText = "";
   let statusNode = null;
+  let thinkingNode = null;
+  let activeFilePath = "";
+  let liveActiveFilePath = "";
   let mentionItems = [];
   let mentionIndex = 0;
   let mentionQueryStart = -1;
@@ -57,7 +61,7 @@
       label: "Ask",
       icon: "💬",
       banner: "Ask — lê o repo e responde (sem editar)",
-      placeholder: "Pergunte sobre o código…",
+      placeholder: "Ask a follow-up…",
     },
     plan: {
       label: "Plan",
@@ -69,7 +73,7 @@
       label: "Agent",
       icon: "✦",
       banner: "Agent — edita com aprovação",
-      placeholder: "Peça uma mudança, investigue um bug…",
+      placeholder: "Ask a follow-up…",
     },
     auto: {
       label: "Auto",
@@ -438,6 +442,7 @@
     toolCards.clear();
     activeToolGroup = null;
     statusNode = null;
+    thinkingNode = null;
     streamNode = null;
     streamText = "";
   }
@@ -472,6 +477,7 @@
 
   function beginAssistantReply() {
     sealToolGroup();
+    sealThinking();
     ensureList();
     clearTransientStatus();
   }
@@ -530,7 +536,64 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function setActiveFileHint(path, opts) {
+    const fromLive = !(opts && opts.demo);
+    if (fromLive) liveActiveFilePath = path || "";
+    activeFilePath = path || "";
+    if (!activeFileHint) return;
+    if (!activeFilePath) {
+      activeFileHint.classList.add("hidden");
+      activeFileHint.textContent = "";
+      return;
+    }
+    activeFileHint.classList.remove("hidden");
+    activeFileHint.textContent = shortLabel(activeFilePath, 22);
+    activeFileHint.title = "Arquivo ativo: " + activeFilePath;
+  }
+
+  function setThinking(text, detail) {
+    ensureList();
+    clearTransientStatus();
+    if (!text) {
+      if (thinkingNode) {
+        thinkingNode.remove();
+        thinkingNode = null;
+      }
+      return;
+    }
+    if (!thinkingNode || !thinkingNode.isConnected) {
+      thinkingNode = el("details", "msg thinking");
+      thinkingNode.open = true;
+      thinkingNode.appendChild(el("summary", null, text));
+      thinkingNode.appendChild(el("div", "thinking-body", detail || "Analisando o pedido e o contexto do workspace…"));
+      messagesEl.appendChild(thinkingNode);
+    } else {
+      const sum = thinkingNode.querySelector("summary");
+      const body = thinkingNode.querySelector(".thinking-body");
+      if (sum) sum.textContent = text;
+      if (body && detail) body.textContent = detail;
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function sealThinking() {
+    if (!thinkingNode || !thinkingNode.isConnected) {
+      thinkingNode = null;
+      return;
+    }
+    thinkingNode.open = false;
+    const sum = thinkingNode.querySelector("summary");
+    if (sum) sum.textContent = "Pensou";
+    thinkingNode = null;
+  }
+
   function setTransientStatus(text) {
+    // Prefer Continue-style thinking accordion for "Pensando…"
+    if (text && /^pensando/i.test(String(text).trim())) {
+      setThinking("Pensando", String(text));
+      return;
+    }
+    setThinking(null);
     ensureList();
     if (!text) {
       if (statusNode) {
@@ -672,6 +735,7 @@
 
   function upsertToolCard(ev, phase) {
     ensureList();
+    sealThinking();
     clearTransientStatus();
     const group = ensureToolGroup();
     const id = ev.toolCallId || ev.toolName + "-" + Date.now();
@@ -905,21 +969,21 @@
     streamNode = null;
     streamText = "";
     statusNode = null;
+    thinkingNode = null;
     models = DEMO_MODELS.slice();
     setMode("agent");
     setModelLabel("claude-sonnet-4");
+    setActiveFileHint("src/webview/ModeSelect.tsx", { demo: true });
     messagesEl.appendChild(el("div", "demo-banner", "Prévia visual"));
     appendMessage(
       "user",
       "Quero modos Ask/Plan/Agent e Edit no estilo Continue.",
       "Você"
     );
-    const thinking = el("details", "msg thinking");
-    thinking.appendChild(el("summary", null, "Pensando"));
-    thinking.appendChild(
-      el("div", "thinking-body", "Espelhando ModeSelect + Edit chrome do Continue.")
+    setThinking(
+      "Pensando",
+      "Espelhando ModeSelect + Edit chrome do Continue. Lendo o arquivo ativo e o composer."
     );
-    messagesEl.appendChild(thinking);
     upsertToolCard(
       {
         toolCallId: "d1",
@@ -967,8 +1031,12 @@
     appendPlanCard(
       "## Plano demo\n1. Ask com tools de leitura\n2. CTA **Executar plano**\n3. Banner de Edit"
     );
-    if (contextStrip) contextStrip.classList.remove("hidden");
-    if (contextLabel) contextLabel.textContent = "Edit · ModeSelect.tsx · L12–40";
+    setEditMode({
+      active: true,
+      fileName: "ModeSelect.tsx",
+      startLine: 12,
+      endLine: 40,
+    });
     if (usageEl) {
       usageEl.classList.remove("hidden");
       usageEl.textContent = "tokens in 1.1k / out 740";
@@ -982,6 +1050,7 @@
     if (contextStrip) contextStrip.classList.add("hidden");
     if (usageEl) usageEl.classList.add("hidden");
     setEditMode({ active: false });
+    setActiveFileHint(liveActiveFilePath);
     hideApproval();
     showEmpty();
   }
@@ -1152,6 +1221,7 @@
         currentProfile = msg.profileName || "";
         if (typeof msg.hasKey === "boolean") hasKey = msg.hasKey;
         setModelLabel(msg.model || currentModel);
+        if (!demo) setActiveFileHint(msg.activeFile || "");
         if (Array.isArray(msg.models) && msg.models.length) {
           models = msg.models;
           renderModelList();

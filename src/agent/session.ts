@@ -135,7 +135,7 @@ export class AgentSession {
         if ((m.content?.length ?? 0) <= 500) return m;
         return {
           ...m,
-          content: `${m.content.slice(0, 500)}\n…[truncated for context]`,
+          content: `${m.content.slice(0, 500)}…[truncated for context]`,
         };
       });
     }
