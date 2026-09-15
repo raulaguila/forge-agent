@@ -1,5 +1,5 @@
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.__forgeVscode || acquireVsCodeApi();
 
   const messagesEl = document.getElementById("messages");
   const input = document.getElementById("input");
@@ -312,6 +312,7 @@
   }
 
   function showEmpty() {
+    if (!messagesEl) return;
     messagesEl.innerHTML = "";
     toolCards.clear();
     statusNode = null;
@@ -776,7 +777,21 @@
     if (!demo) vscode.postMessage({ type: "setAutonomy", mode: next });
   }
 
-  btnSend.addEventListener("click", send);
+  try {
+    setMode("agent");
+    showEmpty();
+  } catch (err) {
+    try {
+      vscode.postMessage({
+        type: "webviewLog",
+        level: "error",
+        message: "early paint failed: " + (err && err.message ? err.message : String(err)),
+        detail: err && err.stack ? err.stack : "",
+      });
+    } catch (_) {}
+  }
+
+  if (btnSend) btnSend.addEventListener("click", send);
   if (btnStop)
     btnStop.addEventListener("click", function () {
       if (demo) {
@@ -882,8 +897,8 @@
     }
   });
 
-  input.addEventListener("input", detectMention);
-  input.addEventListener("keydown", function (e) {
+  if (input) input.addEventListener("input", detectMention);
+  if (input) input.addEventListener("keydown", function (e) {
     if (!mentionPopup.classList.contains("hidden") && mentionItems.length) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -1065,15 +1080,26 @@
   });
 
   try {
+    // showEmpty may already have run; call again to replace staticEmpty.
     setMode("agent");
     showEmpty();
+    vscode.postMessage({ type: "webviewLog", level: "info", message: "main.js boot ok" });
     vscode.postMessage({ type: "ready" });
   } catch (err) {
-    const pre = document.createElement("pre");
-    pre.style.cssText = "padding:12px;color:#f48771;white-space:pre-wrap";
-    pre.textContent = "Forge UI error: " + (err && err.message ? err.message : String(err));
-    document.body.innerHTML = "";
-    document.body.appendChild(pre);
-    throw err;
+    var msg = err && err.message ? err.message : String(err);
+    var stack = err && err.stack ? err.stack : "";
+    try {
+      vscode.postMessage({ type: "webviewLog", level: "error", message: msg, detail: stack });
+    } catch (_) {}
+    var el = document.getElementById("bootError");
+    if (el) {
+      el.style.display = "block";
+      el.textContent = "Forge UI error: " + msg + (stack ? "\n" + stack : "");
+    } else {
+      var pre = document.createElement("pre");
+      pre.style.cssText = "padding:12px;color:#f48771;white-space:pre-wrap";
+      pre.textContent = "Forge UI error: " + msg;
+      document.body.appendChild(pre);
+    }
   }
 })();

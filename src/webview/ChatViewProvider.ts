@@ -16,6 +16,7 @@ import {
 } from "../agent/profiles";
 import { SessionStore, titleFromMessages } from "../agent/sessions";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
+import { logError, logInfo, logWarn, showLog } from "../log";
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "forgeAgent.chatView";
@@ -45,18 +46,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this.view = webviewView;
+    logInfo("Resolving chat webview");
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
     };
-    webviewView.webview.html = this.getHtml(webviewView.webview);
+    try {
+      webviewView.webview.html = this.getHtml(webviewView.webview);
+      logInfo("Chat webview HTML assigned");
+      // If the webview never calls ready, surface that in Output.
+      setTimeout(() => {
+        if (!this.view) return;
+        logWarn("Webview still mounted 3s after HTML assign — if UI is blank, run Forge Agent: Show Logs and check for webview errors");
+      }, 3000);
+    } catch (e) {
+      logError("Failed to build chat HTML", e);
+      showLog();
+      webviewView.webview.html = `<!DOCTYPE html><html><body style="font:13px sans-serif;padding:12px;color:#f48771">
+        <h3>Forge Agent — erro ao montar UI</h3>
+        <pre>${String(e instanceof Error ? e.stack || e.message : e).replace(/</g, "&lt;")}</pre>
+        <p>Abra Output → Forge Agent ou rode “Forge Agent: Show Logs”.</p>
+      </body></html>`;
+    }
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "ready":
+          logInfo("Webview ready");
           await this.profileStore.ensureSeeded();
           await this.pushConfig();
           break;
+        case "webviewLog":
+        case "webviewLog": {
+          const level = String(msg.level ?? "info");
+          const text = String(msg.message ?? "");
+          if (level === "error") logError("webview: " + text, msg.detail);
+          else if (level === "warn") logWarn("webview: " + text, msg.detail);
+          else logInfo("webview: " + text, msg.detail);
+          break;
+        }
         case "send": {
           const text = String(msg.text ?? "");
           if (msg.edit && this.editContext) {
@@ -670,17 +698,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private getHtml(webview: vscode.Webview): string {
-    const mediaDir = path.join(this.extensionUri.fsPath, "media", "webview");
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(mediaDir, "main.js"))
+      vscode.Uri.joinPath(this.extensionUri, "media", "webview", "main.js")
     );
     const markdownUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(mediaDir, "markdown.js"))
+      vscode.Uri.joinPath(this.extensionUri, "media", "webview", "markdown.js")
     );
     const styleUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(mediaDir, "styles.css"))
+      vscode.Uri.joinPath(this.extensionUri, "media", "webview", "styles.css")
     );
     const nonce = getNonce();
+    logInfo("Webview assets", {
+      script: String(scriptUri),
+      style: String(styleUri),
+      markdown: String(markdownUri),
+    });
 
     return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -690,9 +722,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="${styleUri}" rel="stylesheet" />
+  <style>
+    /* Critical fallback if styles.css fails to load */
+    html,body{height:100%;margin:0;background:#1a1a1a;color:#ececec;font:13px/1.4 system-ui,sans-serif}
+    #app{display:flex;flex-direction:column;height:100%;min-height:0}
+    #messages{flex:1;overflow:auto;padding:16px}
+    .composer{padding:10px;border-top:1px solid rgba(255,255,255,.08)}
+    #bootError{display:none;margin:12px;padding:10px;border:1px solid #f48771;border-radius:8px;color:#f48771;white-space:pre-wrap}
+    .empty-fallback{opacity:.75;text-align:center;margin-top:24px}
+  </style>
   <title>Forge Agent</title>
 </head>
 <body>
+  <div id="bootError"></div>
   <div id="app">
     <header class="top">
       <div class="brand">
@@ -726,7 +768,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       <kbd class="edit-esc">Esc</kbd>
     </div>
 
-    <main id="messages"></main>
+    <main id="messages">
+      <div class="empty empty-fallback" id="staticEmpty" style="text-align:center;padding:28px 12px;color:#ddd">
+        <div class="hero-mark" style="width:28px;height:28px;border-radius:8px;background:#c9954a;margin:0 auto 10px"></div>
+        <h1 style="margin:0 0 8px;font-size:20px;color:#fff">Forge</h1>
+        <p style="margin:0;opacity:.8">Carregando interface… Se isto não sumir, rode <b>Forge Agent: Show Logs</b>.</p>
+      </div>
+    </main>
     <section id="approval" class="approval hidden"></section>
     <div id="usage" class="usage hidden"></div>
 
@@ -848,6 +896,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </div>
     </div>
   </div>
+  <script nonce="${nonce}">
+    (function () {
+      // acquireVsCodeApi() can only be called once per webview session.
+      var api = acquireVsCodeApi();
+      window.__forgeVscode = api;
+      function show(err) {
+        var el = document.getElementById("bootError");
+        if (!el) return;
+        el.style.display = "block";
+        el.textContent = "Forge UI error: " + err;
+        try { api.postMessage({ type: "webviewLog", level: "error", message: String(err) }); } catch (_) {}
+      }
+      window.addEventListener("error", function (e) {
+        show((e && e.message) || "script error");
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        show((e && e.reason && (e.reason.message || e.reason)) || "promise rejection");
+      });
+      try { api.postMessage({ type: "webviewLog", level: "info", message: "inline boot ok" }); } catch (_) {}
+    })();
+  </script>
   <script nonce="${nonce}" src="${markdownUri}"></script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

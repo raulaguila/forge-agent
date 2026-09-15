@@ -7,8 +7,29 @@ import { selectionAsPrompt } from "./agent/context";
 import { SessionStore } from "./agent/sessions";
 import { openProjectRules } from "./agent/rules";
 import { ProfileStore } from "./agent/profiles";
+import { getLog, logError, logInfo, showLog } from "./log";
 
 export function activate(context: vscode.ExtensionContext): void {
+  context.subscriptions.push(getLog());
+  logInfo("Activating Forge Agent", {
+    version: context.extension.packageJSON?.version,
+    extensionPath: context.extensionUri.fsPath,
+  });
+
+  try {
+    activateSafe(context);
+    logInfo("Forge Agent activated");
+  } catch (e) {
+    logError("Activation failed", e);
+    showLog();
+    void vscode.window.showErrorMessage(
+      `Forge Agent falhou ao ativar: ${e instanceof Error ? e.message : String(e)}. Veja Output → Forge Agent.`
+    );
+    throw e;
+  }
+}
+
+function activateSafe(context: vscode.ExtensionContext): void {
   const keyStore = new KeyStore(context.secrets);
   const sessionStore = new SessionStore(context.workspaceState);
   const profileStore = new ProfileStore(context.globalState);
@@ -89,8 +110,13 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("forgeAgent.editSelection", async () => {
       await chat.enterEditMode();
+    }),
+    vscode.commands.registerCommand("forgeAgent.showLogs", () => {
+      showLog();
+      logInfo("Log opened by user");
     })
   );
+  logInfo("Webview provider registered", ChatViewProvider.viewType);
 }
 
 export function deactivate(): void {}
