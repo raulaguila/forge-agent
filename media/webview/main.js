@@ -50,6 +50,7 @@
   let mentionQueryStart = -1;
   let mentionTimer = null;
   const toolCards = new Map();
+  let activeToolGroup = null;
 
   const MODE_META = {
     ask: {
@@ -295,6 +296,7 @@
     if (!messagesEl) return;
     messagesEl.innerHTML = "";
     toolCards.clear();
+    activeToolGroup = null;
     statusNode = null;
     streamNode = null;
     streamText = "";
@@ -370,6 +372,12 @@
     }
     streamNode = null;
     streamText = "";
+  }
+
+  function beginAssistantReply() {
+    sealToolGroup();
+    ensureList();
+    clearTransientStatus();
   }
 
   function appendRichAssistant(parts) {
@@ -459,6 +467,16 @@
     return "•";
   }
 
+  function toolKind(name) {
+    const n = name || "";
+    if (/read_file|get_selection|get_open_editors|get_diagnostics/i.test(n)) return "read";
+    if (/list_dir/i.test(n)) return "list";
+    if (/search/i.test(n)) return "search";
+    if (/write|edit|apply/i.test(n)) return "write";
+    if (/terminal|run/i.test(n)) return "terminal";
+    return "other";
+  }
+
   function toolTitle(ev) {
     if (ev.summary) return ev.summary;
     const name = ev.toolName || "tool";
@@ -469,9 +487,98 @@
     return name;
   }
 
+  function formatGroupLabel(group) {
+    const counts = { read: 0, list: 0, search: 0, write: 0, terminal: 0, other: 0 };
+    let running = 0;
+    let failed = 0;
+    group.tools.forEach(function (t) {
+      counts[t.kind] = (counts[t.kind] || 0) + 1;
+      if (t.phase === "request") running += 1;
+      if (t.ok === false) failed += 1;
+    });
+    const parts = [];
+    if (counts.read) parts.push(counts.read === 1 ? "1 leitura" : counts.read + " leituras");
+    if (counts.list) parts.push(counts.list === 1 ? "1 pasta" : counts.list + " pastas");
+    if (counts.search) parts.push(counts.search === 1 ? "1 busca" : counts.search + " buscas");
+    if (counts.write) parts.push(counts.write === 1 ? "1 escrita" : counts.write + " escritas");
+    if (counts.terminal) parts.push(counts.terminal === 1 ? "1 terminal" : counts.terminal + " terminais");
+    if (counts.other) parts.push(counts.other === 1 ? "1 tool" : counts.other + " tools");
+    const detail = parts.join(" · ") || group.tools.length + " tools";
+    if (running) return "Explorando · " + detail;
+    if (failed) return "Explorou · " + detail + " · " + failed + " erro" + (failed > 1 ? "s" : "");
+    return "Explorou · " + detail;
+  }
+
+  function refreshToolGroup(group) {
+    if (!group) return;
+    group.label.textContent = formatGroupLabel(group);
+    group.count.textContent = String(group.tools.length);
+    const anyRunning = group.tools.some(function (t) {
+      return t.phase === "request";
+    });
+    group.root.classList.toggle("running", anyRunning);
+    group.root.classList.toggle("done", !anyRunning);
+  }
+
+  function setToolGroupExpanded(group, open) {
+    if (!group) return;
+    group.expanded = open;
+    group.list.classList.toggle("hidden", !open);
+    group.chevron.textContent = open ? "▾" : "▸";
+    group.head.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function sealToolGroup() {
+    if (!activeToolGroup) return;
+    const group = activeToolGroup;
+    refreshToolGroup(group);
+    setToolGroupExpanded(group, false);
+    activeToolGroup = null;
+  }
+
+  function ensureToolGroup() {
+    if (activeToolGroup && activeToolGroup.root.isConnected) {
+      return activeToolGroup;
+    }
+    ensureList();
+    clearTransientStatus();
+    const root = el("div", "tool-group");
+    const head = el("button", "tool-group-head");
+    head.type = "button";
+    head.setAttribute("aria-expanded", "true");
+    const chevron = el("span", "tool-chevron", "▾");
+    const icon = el("span", "tool-group-icon", "⋯");
+    const label = el("span", "tool-group-label", "Explorando…");
+    const count = el("span", "tool-group-count", "0");
+    head.appendChild(chevron);
+    head.appendChild(icon);
+    head.appendChild(label);
+    head.appendChild(count);
+    const list = el("div", "tool-group-list");
+    const group = {
+      root: root,
+      head: head,
+      list: list,
+      label: label,
+      count: count,
+      chevron: chevron,
+      expanded: true,
+      tools: [],
+    };
+    head.addEventListener("click", function () {
+      setToolGroupExpanded(group, !group.expanded);
+    });
+    root.appendChild(head);
+    root.appendChild(list);
+    messagesEl.appendChild(root);
+    activeToolGroup = group;
+    return group;
+  }
+
   function upsertToolCard(ev, phase) {
     ensureList();
     clearTransientStatus();
+    const group = ensureToolGroup();
     const id = ev.toolCallId || ev.toolName + "-" + Date.now();
     let card = toolCards.get(id);
     if (!card) {
@@ -480,7 +587,7 @@
       head.type = "button";
       const chevron = el("span", "tool-chevron", "▸");
       const icon = el("span", "tool-icon", toolIcon(ev.toolName));
-      const title = el("span", "tool-title", toolTitle(ev));
+      const title = el("span", "tool-title", "");
       const meta = el("span", "tool-meta", "");
       head.appendChild(chevron);
       head.appendChild(icon);
@@ -489,25 +596,38 @@
       const body = el("div", "tool-body hidden");
       const detail = el("pre", "tool-detail");
       body.appendChild(detail);
-      head.addEventListener("click", function () {
+      head.addEventListener("click", function (e) {
+        e.stopPropagation();
         const open = body.classList.toggle("hidden") === false;
         chevron.textContent = open ? "▾" : "▸";
       });
       root.appendChild(head);
       root.appendChild(body);
-      messagesEl.appendChild(root);
+      group.list.appendChild(root);
+      const entry = {
+        kind: toolKind(ev.toolName),
+        phase: phase,
+        ok: undefined,
+        name: ev.toolName || "",
+      };
+      group.tools.push(entry);
       toolCards.set(id, {
         root: root,
         title: title,
         meta: meta,
         detail: detail,
         icon: icon,
+        requestSummary: "",
+        entry: entry,
+        group: group,
       });
       card = toolCards.get(id);
+      setToolGroupExpanded(group, true);
     }
-    card.title.textContent = toolTitle(ev);
-    card.icon.textContent = toolIcon(ev.toolName);
     if (phase === "request") {
+      card.requestSummary = toolTitle(ev);
+      card.title.textContent = card.requestSummary;
+      card.icon.textContent = toolIcon(ev.toolName);
       card.root.classList.remove("ok", "err");
       card.root.classList.add(ev.requiresApproval ? "pending" : "running");
       card.meta.textContent = ev.requiresApproval ? "aguardando" : "…";
@@ -515,7 +635,13 @@
         ev.args && Object.keys(ev.args).length
           ? JSON.stringify(ev.args, null, 2)
           : "Em execução…";
+      card.entry.phase = "request";
+      card.entry.ok = undefined;
+      card.entry.kind = toolKind(ev.toolName);
     } else {
+      if (!card.requestSummary) card.requestSummary = toolTitle({ toolName: ev.toolName, args: ev.args });
+      card.title.textContent = card.requestSummary;
+      card.icon.textContent = toolIcon(ev.toolName);
       card.root.classList.remove("pending", "running");
       const ok =
         ev.ok !== false && !/^ERROR:/i.test(String(ev.preview || ev.result || ""));
@@ -526,7 +652,10 @@
         ev.preview ||
         (ev.result ? String(ev.result).slice(0, 500) : "") ||
         (ok ? "Concluído" : "Falhou");
+      card.entry.phase = "result";
+      card.entry.ok = ok;
     }
+    refreshToolGroup(card.group || group);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
@@ -678,6 +807,7 @@
     if (btnDemo) btnDemo.setAttribute("aria-pressed", "true");
     messagesEl.innerHTML = "";
     toolCards.clear();
+    activeToolGroup = null;
     streamNode = null;
     streamText = "";
     statusNode = null;
@@ -709,12 +839,32 @@
       {
         toolCallId: "d1",
         toolName: "read_file",
-        summary: "180 lines",
+        summary: "180 lines · 4.2k chars",
         preview: "export function ModeSelect() { … }",
         ok: true,
       },
       "result"
     );
+    upsertToolCard(
+      {
+        toolCallId: "d2",
+        toolName: "read_file",
+        summary: "Read composer.css",
+        args: { path: "composer.css" },
+      },
+      "request"
+    );
+    upsertToolCard(
+      {
+        toolCallId: "d2",
+        toolName: "read_file",
+        summary: "90 lines · 1.1k chars",
+        preview: ".composer { … }",
+        ok: true,
+      },
+      "result"
+    );
+    sealToolGroup();
     appendMessage(
       "assistant",
       "Fluxos alinhados ao Continue:\n\n- **Ask** — tools de leitura, sem editar\n- **Plan** — leitura + plano\n- **Agent** — edits com aprovação\n- **Edit** — chrome sobre a seleção (Esc para sair)\n\n```tsx\n<ModeSelect />\n```",
@@ -921,7 +1071,10 @@
         setEditMode(msg);
         break;
       case "user":
-        if (!demo) appendMessage("user", msg.text, "Você");
+        if (!demo) {
+          sealToolGroup();
+          appendMessage("user", msg.text, "Você");
+        }
         break;
       case "cleared":
         hideApproval();
@@ -993,8 +1146,7 @@
           const text = String(ev.text || "");
           if (!/^Executando\b/i.test(text)) setTransientStatus(text);
         } else if (ev.type === "assistant_delta") {
-          ensureList();
-          clearTransientStatus();
+          beginAssistantReply();
           if (!streamNode) {
             streamNode = el("div", "msg assistant");
             streamNode.appendChild(el("span", "label", "Forge"));
@@ -1007,6 +1159,7 @@
           if (body) body.textContent = streamText;
           messagesEl.scrollTop = messagesEl.scrollHeight;
         } else if (ev.type === "assistant_done") {
+          sealToolGroup();
           clearTransientStatus();
           if (streamNode) {
             if (ev.text) streamText = String(ev.text);
@@ -1021,13 +1174,16 @@
         } else if (ev.type === "tool_request") upsertToolCard(ev, "request");
         else if (ev.type === "tool_result") upsertToolCard(ev, "result");
         else if (ev.type === "error") {
+          sealToolGroup();
           clearTransientStatus();
           appendMessage("error", ev.text || "Erro", "Erro");
         } else if (ev.type === "plan_ready") {
+          sealToolGroup();
           clearTransientStatus();
           if (streamNode) finalizeStreamMarkdown();
           appendPlanCard(ev.plan || ev.text || "");
         } else if (ev.type === "done") {
+          sealToolGroup();
           if (streamNode) finalizeStreamMarkdown();
           clearTransientStatus();
           setBusy(false);

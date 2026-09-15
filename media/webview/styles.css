@@ -484,15 +484,16 @@ html, body {
   cursor: default;
 }
 
-/* Tools */
-.tool-card {
+/* Tools — grouped activity (Codex-style) */
+.tool-group {
   display: flex;
   flex-direction: column;
-  max-width: 100%;
+  gap: 2px;
+  margin: 2px 0 6px;
   animation: fadeUp 180ms ease-out;
 }
 
-.tool-head {
+.tool-group-head {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -500,13 +501,86 @@ html, body {
   border: none;
   background: transparent;
   color: var(--muted);
-  padding: 5px 4px;
+  padding: 4px 4px;
   font: inherit;
   font-size: 12px;
-  font-family: var(--mono);
   text-align: left;
   cursor: pointer;
   border-radius: 8px;
+}
+
+.tool-group-head:hover {
+  background: var(--list-hover, var(--chip));
+  color: var(--text);
+}
+
+.tool-group.running .tool-group-icon {
+  color: var(--forge);
+}
+
+.tool-group.done .tool-group-icon {
+  color: var(--muted);
+}
+
+.tool-group-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  flex: 0 0 auto;
+  background: var(--chip);
+}
+
+.tool-group-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.tool-group-count {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-family: var(--mono);
+  opacity: 0.7;
+  min-width: 1.2em;
+  text-align: right;
+}
+
+.tool-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 0 2px 8px;
+  margin-left: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 3px 4px;
+  font: inherit;
+  font-size: 11.5px;
+  font-family: var(--mono);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
 }
 
 .tool-head:hover {
@@ -515,12 +589,12 @@ html, body {
 }
 
 .tool-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
   display: grid;
   place-items: center;
-  font-size: 9px;
+  font-size: 8px;
   flex: 0 0 auto;
   background: var(--chip);
   color: var(--muted);
@@ -553,16 +627,16 @@ html, body {
 }
 
 .tool-body {
-  margin: 0 0 2px 28px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  margin: 0 0 2px 22px;
+  padding: 6px 8px;
+  border-radius: 6px;
   border: 1px solid var(--line);
   background: var(--bg-elevated);
 }
 
 .tool-detail {
   margin: 0;
-  max-height: 140px;
+  max-height: 100px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
