@@ -177,13 +177,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "listSessions": {
+          const source = String(msg.source ?? "home");
           this.post({
             type: "sessions",
-            sessions: this.sessionStore.list().slice(0, 12).map((s) => ({
-              id: s.id,
-              title: s.title,
-              updatedAt: s.updatedAt,
-            })),
+            source,
+            sessions: this.sessionStore
+              .list()
+              .slice(0, source === "menu" ? 12 : 5)
+              .map((s) => ({
+                id: s.id,
+                title: s.title,
+                updatedAt: s.updatedAt,
+              })),
           });
           break;
         }
@@ -194,7 +199,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.currentSessionId = saved.id;
           const sess = await this.ensureSession();
           sess?.loadMessages(saved.messages);
-          this.post({ type: "cleared" });
+          this.post({ type: "cleared", reason: "loadSession" });
           for (const m of saved.messages) {
             if (m.role === "user") this.post({ type: "user", text: m.content });
             if (m.role === "assistant" && m.content) {
@@ -205,14 +210,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         case "deleteSession": {
           await this.sessionStore.remove(String(msg.id ?? ""));
-          this.post({
-            type: "sessions",
-            sessions: this.sessionStore.list().map((s) => ({
-              id: s.id,
-              title: s.title,
-              updatedAt: s.updatedAt,
-            })),
-          });
+          this.postRecentSessions();
           break;
         }
         case "undoCheckpoint": {
@@ -526,6 +524,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private postRecentSessions(): void {
     this.post({
       type: "sessions",
+      source: "home",
       sessions: this.sessionStore.list().slice(0, 5).map((s) => ({
         id: s.id,
         title: s.title,

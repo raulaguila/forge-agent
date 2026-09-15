@@ -362,7 +362,7 @@
     home.appendChild(box);
     messagesEl.appendChild(home);
 
-    if (!demo) vscode.postMessage({ type: "listSessions" });
+    if (!demo) vscode.postMessage({ type: "listSessions", source: "home" });
   }
 
   function formatRelativeTime(ts) {
@@ -411,8 +411,12 @@
     return true;
   }
 
-  function showSessionsHistory(sessions) {
-    if (renderHomeSessions(sessions)) return;
+  function showSessionsHistory(sessions, source) {
+    // Home / auto refresh: only paint the empty-state list; never append the history card.
+    if (source !== "menu") {
+      renderHomeSessions(sessions);
+      return;
+    }
     ensureList();
     const box = el("div", "msg plan");
     box.appendChild(el("div", "plan-title", "Histórico"));
@@ -426,6 +430,16 @@
       box.appendChild(row);
     });
     messagesEl.appendChild(box);
+  }
+
+  function resetTranscript() {
+    if (!messagesEl) return;
+    messagesEl.innerHTML = "";
+    toolCards.clear();
+    activeToolGroup = null;
+    statusNode = null;
+    streamNode = null;
+    streamText = "";
   }
 
   function appendMessage(kind, text, label) {
@@ -1072,7 +1086,7 @@
       closeMenus();
       if (action === "demo") toggleDemo();
       if (action === "settings") openEditorSettings();
-      if (action === "history") vscode.postMessage({ type: "listSessions" });
+      if (action === "history") vscode.postMessage({ type: "listSessions", source: "menu" });
       if (action === "undo") vscode.postMessage({ type: "undoCheckpoint" });
     });
 
@@ -1161,6 +1175,7 @@
         hideMentions();
         setEditMode({ active: false });
         if (demo) exitDemo();
+        else if (msg.reason === "loadSession") resetTranscript();
         else showEmpty();
         setBusy(false);
         break;
@@ -1172,7 +1187,7 @@
         showApproval(msg);
         break;
       case "sessions": {
-        showSessionsHistory(msg.sessions || []);
+        showSessionsHistory(msg.sessions || [], msg.source || "home");
         break;
       }
       case "slashSuggestions":
