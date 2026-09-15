@@ -2,6 +2,10 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { spawn } from "child_process";
 import type { ToolDefinition, ToolResult, ToolRisk } from "../types";
+import {
+  getPreferredSelection,
+  listOpenEditorInfos,
+} from "./editorContext";
 
 export interface ToolContext {
   cwd: string;
@@ -264,35 +268,49 @@ async function getDiagnostics(args: Record<string, unknown>): Promise<ToolResult
 }
 
 async function getOpenEditors(): Promise<ToolResult> {
-  const editors = vscode.window.visibleTextEditors;
+  const editors = listOpenEditorInfos();
   if (!editors.length) {
-    return { ok: true, output: "Nenhum editor visível." };
+    return {
+      ok: true,
+      output:
+        "Nenhum editor de código aberto (o foco no chat não conta). Abra um arquivo no editor.",
+    };
   }
   const lines = editors.map((e) => {
-    const rel = vscode.workspace.asRelativePath(e.document.uri);
-    const sel = e.selection;
-    return `${rel} (L${sel.start.line + 1}:${sel.start.character + 1}-L${sel.end.line + 1}:${sel.end.character + 1}) lang=${e.document.languageId}`;
+    const mark = e.active ? " [ativo]" : "";
+    return `${e.path}${mark} lang=${e.language}`;
   });
   return { ok: true, output: lines.join("\n") };
 }
 
 async function getSelection(): Promise<ToolResult> {
-  const ed = vscode.window.activeTextEditor;
-  if (!ed) {
-    return { ok: false, output: "Nenhum editor ativo." };
+  const ctx = getPreferredSelection();
+  if (!ctx) {
+    return {
+      ok: false,
+      output:
+        "Nenhum editor ativo. Foque um arquivo no editor (o chat webview remove o activeTextEditor).",
+    };
   }
-  const text = ed.document.getText(ed.selection);
-  const rel = vscode.workspace.asRelativePath(ed.document.uri);
+  const text = ctx.document.getText(ctx.selection);
+  const rel = vscode.workspace.asRelativePath(ctx.document.uri);
   return {
     ok: true,
     output: JSON.stringify(
       {
         path: rel,
-        language: ed.document.languageId,
+        language: ctx.document.languageId,
         selection: text,
+        empty: ctx.selection.isEmpty,
         range: {
-          start: { line: ed.selection.start.line + 1, character: ed.selection.start.character + 1 },
-          end: { line: ed.selection.end.line + 1, character: ed.selection.end.character + 1 },
+          start: {
+            line: ctx.selection.start.line + 1,
+            character: ctx.selection.start.character + 1,
+          },
+          end: {
+            line: ctx.selection.end.line + 1,
+            character: ctx.selection.end.character + 1,
+          },
         },
       },
       null,
@@ -421,7 +439,8 @@ export function createToolRegistry(): Map<string, RegisteredTool> {
       risk: "read",
       def: {
         name: "get_open_editors",
-        description: "Lista editores visíveis e seleções atuais.",
+        description:
+          "Lista arquivos abertos nas abas e marca o arquivo ativo (funciona com foco no chat).",
         parameters: { type: "object", properties: {} },
       },
       run: () => getOpenEditors(),
@@ -430,7 +449,8 @@ export function createToolRegistry(): Map<string, RegisteredTool> {
       risk: "read",
       def: {
         name: "get_selection",
-        description: "Retorna a seleção atual do editor ativo.",
+        description:
+          "Retorna a seleção/cursor do arquivo ativo do usuário (último editor de código, não o webview).",
         parameters: { type: "object", properties: {} },
       },
       run: () => getSelection(),

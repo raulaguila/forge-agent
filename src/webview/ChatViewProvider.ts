@@ -7,6 +7,7 @@ import { listModels } from "../providers/models";
 import { KeyStore } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
 import { expandUserMessage, suggestMentions } from "../agent/context";
+import { getPreferredSelection } from "../agent/editorContext";
 import { expandSlash, parseSlash, SLASH_COMMANDS } from "../agent/slash";
 import { openProjectRules } from "../agent/rules";
 import { ProfileStore } from "../agent/profiles";
@@ -330,20 +331,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   /** Continue-style Edit: abre o chat com chrome de edição da seleção atual. */
   async enterEditMode(): Promise<void> {
-    const ed = vscode.window.activeTextEditor;
-    if (!ed || ed.selection.isEmpty) {
+    const ctx = getPreferredSelection();
+    if (!ctx || ctx.selection.isEmpty) {
       void vscode.window.showWarningMessage("Selecione um trecho de código.");
       return;
     }
 
-    const filePath = vscode.workspace.asRelativePath(ed.document.uri);
-    const selection = ed.document.getText(ed.selection);
-    const startLine = ed.selection.start.line + 1;
-    const endLine = ed.selection.end.line + 1;
+    const filePath = vscode.workspace.asRelativePath(ctx.document.uri);
+    const selection = ctx.document.getText(ctx.selection);
+    const startLine = ctx.selection.start.line + 1;
+    const endLine = ctx.selection.end.line + 1;
 
     this.editContext = {
       filePath,
-      language: ed.document.languageId,
+      language: ctx.document.languageId,
       selection,
       startLine,
       endLine,

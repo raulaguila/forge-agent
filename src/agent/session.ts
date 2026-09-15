@@ -25,16 +25,16 @@ import {
   summarizeToolResult,
 } from "./toolSummary";
 import { loadProjectRules } from "./rules";
+import { activeFileRelativePath, listOpenEditorInfos } from "./editorContext";
 
 export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "(nenhum workspace)";
-  const openFiles = vscode.window.visibleTextEditors
-    .map((e) => vscode.workspace.asRelativePath(e.document.uri))
-    .slice(0, 12);
+  const openFiles = listOpenEditorInfos();
+  const activePath = activeFileRelativePath();
 
   const modeHint =
     config.autonomy === "ask"
-      ? "Modo ASK: responda perguntas sobre o repositório usando tools de leitura (read_file, list_dir, search, diagnostics, etc.). NÃO edite arquivos nem rode terminal."
+      ? "Modo ASK: responda perguntas sobre o repositório usando tools de leitura (read_file, list_dir, search, diagnostics, get_open_editors, etc.). NÃO edite arquivos nem rode terminal."
       : config.autonomy === "plan"
         ? "Modo PLAN: apenas leitura. Investigue o código com tools de leitura e entregue um plano Markdown detalhado (objetivo, passos, arquivos a tocar, riscos). NÃO edite arquivos nem rode terminal."
         : config.autonomy === "auto"
@@ -42,12 +42,19 @@ export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
           : "Modo AGENT: edições passam por diff/aprovação do usuário antes de gravar.";
   const rules = await loadProjectRules();
 
+  const openLine = openFiles.length
+    ? `Editores abertos: ${openFiles
+        .map((e) => (e.active ? `${e.path} (ativo)` : e.path))
+        .join(", ")}`
+    : "Nenhum editor de código aberto.";
+
   return [
     "Você é o Forge Agent — um coding agent autônomo dentro do VS Code.",
     "Objetivo: implementar, depurar e refatorar código no workspace do usuário com precisão.",
     "",
     "Regras:",
     "- Use tools para inspecionar o código antes de editar.",
+    "- Quando o usuário falar em “arquivo aberto/atual/este arquivo”, use o Arquivo ativo abaixo (ou get_open_editors / read_file).",
     "- Prefira apply_edit a write_file para mudanças locais.",
     "- Mantenha diffs mínimos e alinhados ao estilo do projeto.",
     "- Não invente APIs; confirme no código.",
@@ -58,7 +65,8 @@ export async function buildSystemPrompt(config: ForgeConfig): Promise<string> {
     modeHint,
     "",
     `Workspace root: ${root}`,
-    openFiles.length ? `Editores abertos: ${openFiles.join(", ")}` : "Nenhum editor aberto.",
+    activePath ? `Arquivo ativo: ${activePath}` : "Arquivo ativo: (nenhum)",
+    openLine,
     config.systemPromptExtra ? `\nInstruções extras do usuário:\n${config.systemPromptExtra}` : "",
     rules ? `\n## Regras do projeto\n${rules}` : "",
   ]

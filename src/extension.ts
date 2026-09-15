@@ -7,6 +7,7 @@ import { selectionAsPrompt } from "./agent/context";
 import { SessionStore } from "./agent/sessions";
 import { openProjectRules } from "./agent/rules";
 import { ProfileStore } from "./agent/profiles";
+import { bindEditorContextTracking, getPreferredSelection } from "./agent/editorContext";
 import { getLog, logError, logInfo, logWarn, showLog } from "./log";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -30,6 +31,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 function activateSafe(context: vscode.ExtensionContext): void {
+  bindEditorContextTracking(context);
   const keyStore = new KeyStore(context.secrets);
   const sessionStore = new SessionStore(context.workspaceState);
   const profileStore = new ProfileStore(context.globalState);
@@ -73,13 +75,13 @@ function activateSafe(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("forgeAgent.manageProfiles", () => openSettings()),
     vscode.commands.registerCommand("forgeAgent.focusChatInput", () => chat.openChat()),
     vscode.commands.registerCommand("forgeAgent.addSelectionToChat", async () => {
-      const ed = vscode.window.activeTextEditor;
-      if (!ed || ed.selection.isEmpty) {
+      const ctx = getPreferredSelection();
+      if (!ctx || ctx.selection.isEmpty) {
         void vscode.window.showWarningMessage("Selecione um trecho de código.");
         return;
       }
-      const rel = vscode.workspace.asRelativePath(ed.document.uri);
-      const text = ed.document.getText(ed.selection);
+      const rel = vscode.workspace.asRelativePath(ctx.document.uri);
+      const text = ctx.document.getText(ctx.selection);
       await chat.insertIntoChat(
         `@${rel}\n\`\`\`\n${text}\n\`\`\`\n\n`
       );
