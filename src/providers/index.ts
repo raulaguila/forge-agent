@@ -74,6 +74,53 @@ function toOpenAiTools(tools: ToolDefinition[]): unknown[] {
   }));
 }
 
+/** Parse tool-call arguments into a plain object for Ollama native /api/chat. */
+function parseToolArgsObject(raw: string | undefined): Record<string, unknown> {
+  if (!raw || !raw.trim()) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return { value: parsed as unknown };
+  } catch {
+    return { raw };
+  }
+}
+
+/**
+ * Ollama /api/chat expects tool_calls[].function.arguments as an object
+ * (not an OpenAI-style JSON string) and tool results with tool_name.
+ * Sending a string causes: "Value looks like object, but can't find closing '}' symbol".
+ */
+function toOllamaMessages(messages: ChatMessage[]): unknown[] {
+  return messages.map((m) => {
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      return {
+        role: "assistant",
+        content: m.content || "",
+        tool_calls: m.toolCalls.map((t) => ({
+          type: "function",
+          function: {
+            name: t.name,
+            arguments: parseToolArgsObject(t.arguments),
+          },
+        })),
+      };
+    }
+    if (m.role === "tool") {
+      return {
+        role: "tool",
+        tool_name: m.name || "",
+        content: m.content,
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+
 function parseOpenAiResponse(body: any): {
   message: ChatMessage;
   finishReason: "stop" | "tool_calls" | "length";
@@ -281,8 +328,8 @@ export class OllamaProvider implements LlmProvider {
       headers.Authorization = `Bearer ${this.apiKey}`;
     }
 
-    // Ollama accepts OpenAI-style messages/tools in /api/chat
-    const messages = toOpenAiMessages(
+    // Native Ollama needs object tool args + tool_name (not OpenAI string args).
+    const messages = toOllamaMessages(
       req.messages.filter((m) => m.role !== "system")
     );
     const system = req.messages
@@ -309,6 +356,10 @@ export class OllamaProvider implements LlmProvider {
     if (status >= 400) {
       const msg = body?.error || body?.message || `Ollama HTTP ${status}`;
       throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    }
+    // Some Ollama builds return 200 with { error: "..." } on bad tool payloads.
+    if (typeof body?.error === "string" && body.error) {
+      throw new Error(body.error);
     }
 
     const msg = body?.message ?? {};
