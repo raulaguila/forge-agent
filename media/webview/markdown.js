@@ -48,6 +48,65 @@
       .join("");
   }
 
+  /** Split a GFM table row into cells (handles leading/trailing pipes). */
+  function splitTableRow(line) {
+    let s = String(line || "").trim();
+    if (s.startsWith("|")) s = s.slice(1);
+    if (s.endsWith("|")) s = s.slice(0, -1);
+    return s.split("|").map(function (c) {
+      return c.trim();
+    });
+  }
+
+  function isTableSeparator(line) {
+    const cells = splitTableRow(line);
+    if (!cells.length) return false;
+    // GFM wants 3+ dashes; models often emit |-|-| — accept 1+.
+    return cells.every(function (c) {
+      return /^:?-+:?$/.test(c.replace(/\s+/g, ""));
+    });
+  }
+
+  function looksLikeTableRow(line) {
+    const t = String(line || "").trim();
+    if (!t.includes("|")) return false;
+    // Avoid treating plain prose with a single pipe as a table.
+    return /^\|?.+\|.+\|?$/.test(t);
+  }
+
+  function alignmentFromSeparator(cell) {
+    const c = cell.replace(/\s+/g, "");
+    const left = c.startsWith(":");
+    const right = c.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return "";
+  }
+
+  function renderTable(headerLine, sepLine, bodyLines) {
+    const headers = splitTableRow(headerLine);
+    const aligns = splitTableRow(sepLine).map(alignmentFromSeparator);
+    const rows = bodyLines.map(splitTableRow);
+
+    let html = '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
+    headers.forEach(function (h, i) {
+      const align = aligns[i] ? ' style="text-align:' + aligns[i] + '"' : "";
+      html += "<th" + align + ">" + inlineFormat(h) + "</th>";
+    });
+    html += "</tr></thead><tbody>";
+    rows.forEach(function (cells) {
+      html += "<tr>";
+      for (let i = 0; i < headers.length; i++) {
+        const align = aligns[i] ? ' style="text-align:' + aligns[i] + '"' : "";
+        html += "<td" + align + ">" + inlineFormat(cells[i] || "") + "</td>";
+      }
+      html += "</tr>";
+    });
+    html += "</tbody></table></div>";
+    return html;
+  }
+
   function renderBlocks(text) {
     const lines = text.split(/\n/);
     const out = [];
@@ -88,6 +147,26 @@
         flushPara();
         flushList();
         i++;
+        continue;
+      }
+
+      // GFM table: header + separator (|---|---|) + body rows
+      if (
+        looksLikeTableRow(trimmed) &&
+        i + 1 < lines.length &&
+        isTableSeparator(lines[i + 1].trim())
+      ) {
+        flushPara();
+        flushList();
+        const headerLine = trimmed;
+        const sepLine = lines[i + 1].trim();
+        i += 2;
+        const body = [];
+        while (i < lines.length && looksLikeTableRow(lines[i].trim())) {
+          body.push(lines[i].trim());
+          i++;
+        }
+        out.push(renderTable(headerLine, sepLine, body));
         continue;
       }
 
