@@ -530,9 +530,8 @@
 
   function sealToolGroup() {
     if (!activeToolGroup) return;
-    const group = activeToolGroup;
-    refreshToolGroup(group);
-    setToolGroupExpanded(group, false);
+    refreshToolGroup(activeToolGroup);
+    // Keep whatever open/closed state the user chose.
     activeToolGroup = null;
   }
 
@@ -545,8 +544,8 @@
     const root = el("div", "tool-group");
     const head = el("button", "tool-group-head");
     head.type = "button";
-    head.setAttribute("aria-expanded", "true");
-    const chevron = el("span", "tool-chevron", "▾");
+    head.setAttribute("aria-expanded", "false");
+    const chevron = el("span", "tool-chevron", "▸");
     const icon = el("span", "tool-group-icon", "⋯");
     const label = el("span", "tool-group-label", "Explorando…");
     const count = el("span", "tool-group-count", "0");
@@ -554,7 +553,7 @@
     head.appendChild(icon);
     head.appendChild(label);
     head.appendChild(count);
-    const list = el("div", "tool-group-list");
+    const list = el("div", "tool-group-list hidden");
     const group = {
       root: root,
       head: head,
@@ -562,7 +561,7 @@
       label: label,
       count: count,
       chevron: chevron,
-      expanded: true,
+      expanded: false,
       tools: [],
     };
     head.addEventListener("click", function () {
@@ -622,7 +621,6 @@
         group: group,
       });
       card = toolCards.get(id);
-      setToolGroupExpanded(group, true);
     }
     if (phase === "request") {
       card.requestSummary = toolTitle(ev);
