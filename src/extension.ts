@@ -7,7 +7,7 @@ import { selectionAsPrompt } from "./agent/context";
 import { SessionStore } from "./agent/sessions";
 import { openProjectRules } from "./agent/rules";
 import { ProfileStore } from "./agent/profiles";
-import { getLog, logError, logInfo, showLog } from "./log";
+import { getLog, logError, logInfo, logWarn, showLog } from "./log";
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(getLog());
@@ -115,7 +115,10 @@ function activateSafe(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("forgeAgent.showLogs", () => {
       showLog();
       logInfo("Log opened by user");
-    })
+    }),
+    vscode.commands.registerCommand("forgeAgent.repairSidebar", () =>
+      chat.repairSidebar()
+    )
   );
   logInfo("Webview provider registered", ChatViewProvider.viewType);
 
@@ -134,6 +137,26 @@ function activateSafe(context: vscode.ExtensionContext): void {
       present: cmds.includes(focusCmd),
       containerCmdPresent: cmds.includes("workbench.view.extension.forge-agent"),
     });
+
+    // Auto-heal empty Forge container (Chat view removed/hidden).
+    await new Promise((r) => setTimeout(r, 1500));
+    if (!chat.hasSidebarView()) {
+      logWarn(
+        "Sidebar chat still unresolved 1.5s after activate — trying resetViewLocation + open"
+      );
+      try {
+        await vscode.commands.executeCommand(
+          `${ChatViewProvider.viewType}.resetViewLocation`
+        );
+        await vscode.commands.executeCommand(`${ChatViewProvider.viewType}.open`);
+        await vscode.commands.executeCommand(
+          "workbench.view.extension.forge-agent"
+        );
+        await vscode.commands.executeCommand(focusCmd);
+      } catch (e) {
+        logWarn("Auto-heal sidebar failed", e);
+      }
+    }
   })();
 }
 

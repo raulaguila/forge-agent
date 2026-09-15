@@ -248,31 +248,58 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   async openChat(): Promise<void> {
-    logInfo("openChat: revealing sidebar container + view");
-    try {
-      await vscode.commands.executeCommand("workbench.view.extension.forge-agent");
-    } catch (e) {
-      logWarn("openChat: could not open activity container", e);
-    }
-    try {
-      await vscode.commands.executeCommand(`${ChatViewProvider.viewType}.focus`);
-    } catch (e) {
-      logWarn("openChat: sidebar focus failed", e);
+    logInfo("openChat: restoring + revealing sidebar chat view");
+    // If the user (or VS Code) removed/hid the Chat view, the activity-bar
+    // container opens empty and resolveWebviewView never runs. Restore first.
+    for (const cmd of [
+      `${ChatViewProvider.viewType}.resetViewLocation`,
+      `${ChatViewProvider.viewType}.open`,
+      "workbench.view.extension.forge-agent",
+      `${ChatViewProvider.viewType}.focus`,
+    ]) {
+      try {
+        await vscode.commands.executeCommand(cmd);
+        logInfo("openChat: ran", cmd);
+      } catch (e) {
+        logWarn("openChat: command failed", cmd, e);
+      }
     }
 
-    // If the sidebar webview never resolved (common when the view is hidden
-    // or the container is empty), fall back to an editor panel so the UI
-    // is never a blank side bar.
-    await new Promise((r) => setTimeout(r, 400));
+    // If the sidebar webview still never resolved, fall back to an editor panel.
+    await new Promise((r) => setTimeout(r, 500));
     if (!this.view) {
       logWarn("openChat: sidebar webview not resolved — opening editor panel fallback");
       void vscode.window.showInformationMessage(
-        "Forge: a sidebar não montou o chat; abrindo no editor. Veja Output → Forge Agent."
+        "Forge: a view Chat da sidebar está vazia/removida; abrindo no editor. Use “View: Reset View Locations” se quiser restaurar a sidebar."
       );
       await this.openChatPanel();
     } else {
       logInfo("openChat: sidebar webview is active");
       this.view.show?.(true);
+    }
+  }
+
+  /** Restore Chat view into the Forge sidebar container and open it. */
+  async repairSidebar(): Promise<void> {
+    logInfo("repairSidebar: resetting chat view location");
+    for (const cmd of [
+      `${ChatViewProvider.viewType}.resetViewLocation`,
+      "workbench.action.resetViewLocations",
+      `${ChatViewProvider.viewType}.open`,
+      "workbench.view.extension.forge-agent",
+      `${ChatViewProvider.viewType}.focus`,
+    ]) {
+      try {
+        await vscode.commands.executeCommand(cmd);
+        logInfo("repairSidebar: ran", cmd);
+      } catch (e) {
+        logWarn("repairSidebar: command failed", cmd, e);
+      }
+    }
+    await new Promise((r) => setTimeout(r, 600));
+    if (!this.view) {
+      logWarn("repairSidebar: still unresolved — opening editor panel");
+      await this.openChatPanel();
     }
   }
 
@@ -508,6 +535,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   hasView(): boolean {
     return Boolean(this.view || this.panel);
+  }
+
+  /** True only when the activity-bar webview resolved (not the editor panel). */
+  hasSidebarView(): boolean {
+    return Boolean(this.view);
   }
 
   private async pushConfig(): Promise<void> {

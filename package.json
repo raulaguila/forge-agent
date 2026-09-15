@@ -2,7 +2,7 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.15.5",
+  "version": "0.15.6",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"
@@ -29,7 +29,8 @@
     "onStartupFinished",
     "onView:forgeAgent.chatView",
     "onCommand:forgeAgent.openChat",
-    "onCommand:forgeAgent.openChatPanel"
+    "onCommand:forgeAgent.openChatPanel",
+    "onCommand:forgeAgent.repairSidebar"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -136,6 +137,11 @@
         "command": "forgeAgent.showLogs",
         "title": "Forge Agent: Show Logs",
         "icon": "$(output)"
+      },
+      {
+        "command": "forgeAgent.repairSidebar",
+        "title": "Forge Agent: Repair Sidebar Chat View",
+        "icon": "$(tools)"
       }
     ],
     "keybindings": [
