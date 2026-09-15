@@ -288,6 +288,8 @@
   }
 
   function ensureList() {
+    const home = messagesEl.querySelector(".home");
+    if (home) home.remove();
     const empty = messagesEl.querySelector(".empty");
     if (empty) empty.remove();
   }
@@ -300,6 +302,20 @@
     statusNode = null;
     streamNode = null;
     streamText = "";
+
+    const home = el("div", "home");
+
+    const recent = el("section", "recent");
+    recent.id = "recentSessions";
+    recent.classList.add("hidden");
+    const recentHead = el("div", "recent-head");
+    recentHead.appendChild(el("span", "recent-label", "Conversas recentes"));
+    recent.appendChild(recentHead);
+    const recentList = el("div", "recent-list");
+    recentList.id = "recentList";
+    recent.appendChild(recentList);
+    home.appendChild(recent);
+
     const box = el("div", "empty");
     box.appendChild(el("div", "hero-mark"));
     box.appendChild(el("h1", null, "Forge"));
@@ -343,6 +359,72 @@
       list.appendChild(btn);
     });
     box.appendChild(list);
+    home.appendChild(box);
+    messagesEl.appendChild(home);
+
+    if (!demo) vscode.postMessage({ type: "listSessions" });
+  }
+
+  function formatRelativeTime(ts) {
+    const t = Number(ts) || 0;
+    if (!t) return "";
+    const diff = Math.max(0, Date.now() - t);
+    const sec = Math.floor(diff / 1000);
+    if (sec < 45) return "agora";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min + " min";
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return hr + " h";
+    const day = Math.floor(hr / 24);
+    if (day < 30) return day + " d";
+    const mo = Math.floor(day / 30);
+    if (mo < 12) return mo + " mês" + (mo > 1 ? "es" : "");
+    const yr = Math.floor(day / 365);
+    return yr + " a";
+  }
+
+  function renderHomeSessions(sessions) {
+    const section = document.getElementById("recentSessions");
+    const list = document.getElementById("recentList");
+    if (!section || !list) return false;
+    const items = (sessions || []).slice(0, 5);
+    list.innerHTML = "";
+    if (!items.length) {
+      section.classList.add("hidden");
+      return true;
+    }
+    section.classList.remove("hidden");
+    items.forEach(function (s) {
+      const btn = el("button", "recent-item");
+      btn.type = "button";
+      btn.title = "Continuar conversa";
+      const title = el("span", "recent-title", s.title || "Conversa");
+      const time = el("span", "recent-time", formatRelativeTime(s.updatedAt));
+      btn.appendChild(title);
+      btn.appendChild(time);
+      btn.addEventListener("click", function () {
+        if (demo) return;
+        vscode.postMessage({ type: "loadSession", id: s.id });
+      });
+      list.appendChild(btn);
+    });
+    return true;
+  }
+
+  function showSessionsHistory(sessions) {
+    if (renderHomeSessions(sessions)) return;
+    ensureList();
+    const box = el("div", "msg plan");
+    box.appendChild(el("div", "plan-title", "Histórico"));
+    (sessions || []).slice(0, 12).forEach(function (s) {
+      const row = el("div", "row");
+      const open = el("button", "ghost", s.title || s.id);
+      open.onclick = function () {
+        vscode.postMessage({ type: "loadSession", id: s.id });
+      };
+      row.appendChild(open);
+      box.appendChild(row);
+    });
     messagesEl.appendChild(box);
   }
 
@@ -1090,19 +1172,7 @@
         showApproval(msg);
         break;
       case "sessions": {
-        ensureList();
-        const box = el("div", "msg plan");
-        box.appendChild(el("div", "plan-title", "Histórico"));
-        (msg.sessions || []).slice(0, 12).forEach(function (s) {
-          const row = el("div", "row");
-          const open = el("button", "ghost", s.title || s.id);
-          open.onclick = function () {
-            vscode.postMessage({ type: "loadSession", id: s.id });
-          };
-          row.appendChild(open);
-          box.appendChild(row);
-        });
-        messagesEl.appendChild(box);
+        showSessionsHistory(msg.sessions || []);
         break;
       }
       case "slashSuggestions":

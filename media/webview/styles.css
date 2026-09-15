@@ -688,12 +688,88 @@ html, body {
   color: var(--muted);
 }
 
-/* Empty */
+/* Empty / home */
+.home {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 4px;
+}
+
+.recent {
+  flex: 0 0 auto;
+  padding: 2px 0 10px;
+  animation: fadeUp 200ms ease-out;
+}
+
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 6px;
+}
+
+.recent-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 8px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.recent-item:hover {
+  background: var(--list-hover, var(--chip));
+}
+
+.recent-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-time {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-empty {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .empty {
   margin: auto;
   text-align: center;
   color: var(--muted);
-  padding: 28px 16px 40px;
+  padding: 20px 16px 40px;
   max-width: 320px;
   display: flex;
   flex-direction: column;

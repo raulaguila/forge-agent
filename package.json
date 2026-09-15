@@ -2,7 +2,7 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "Agentic coding assistant with BYOK — OpenAI, OpenAI-compatible (TLS insecure), Ollama, Anthropic e Gemini.",
-  "version": "0.15.12",
+  "version": "0.15.13",
   "publisher": "forge-agent",
   "engines": {
     "vscode": "^1.85.0"

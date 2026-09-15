@@ -179,7 +179,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case "listSessions": {
           this.post({
             type: "sessions",
-            sessions: this.sessionStore.list().map((s) => ({
+            sessions: this.sessionStore.list().slice(0, 12).map((s) => ({
               id: s.id,
               title: s.title,
               updatedAt: s.updatedAt,
@@ -519,6 +519,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       hasKey,
       profileName: config.profileName || config.provider,
       profileId: config.profileId,
+    });
+    this.postRecentSessions();
+  }
+
+  private postRecentSessions(): void {
+    this.post({
+      type: "sessions",
+      sessions: this.sessionStore.list().slice(0, 5).map((s) => ({
+        id: s.id,
+        title: s.title,
+        updatedAt: s.updatedAt,
+      })),
     });
   }
 
