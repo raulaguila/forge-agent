@@ -21,6 +21,7 @@
 html, body {
   height: 100%;
   margin: 0;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
@@ -28,10 +29,11 @@ html, body {
 }
 
 #app {
-  display: grid;
-  grid-template-rows: auto 1fr auto auto auto;
-  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-height: 0;
+  position: relative;
 }
 
 .hidden { display: none !important; }
@@ -151,6 +153,7 @@ html, body {
 
 /* —— Transcript —— */
 #messages {
+  flex: 1 1 auto;
   overflow: auto;
   padding: 18px 14px 12px;
   display: flex;
@@ -402,6 +405,7 @@ html, body {
 .mode-banner[data-mode="auto"] { color: color-mix(in srgb, var(--muted) 80%, #e6a23c); }
 
 .edit-banner {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -639,6 +643,7 @@ html, body {
 
 /* Approval */
 .approval {
+  flex: 0 0 auto;
   margin: 0 12px 8px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -675,6 +680,7 @@ html, body {
 }
 
 .usage {
+  flex: 0 0 auto;
   padding: 0 14px 2px;
   font-size: 11px;
   color: var(--muted);
@@ -683,6 +689,7 @@ html, body {
 
 /* —— Composer (Continue-inspired) —— */
 .composer {
+  flex: 0 0 auto;
   padding: 8px 10px 10px;
   background: linear-gradient(to top, var(--bg) 65%, transparent);
 }
@@ -1032,8 +1039,6 @@ button.ghost:hover { color: var(--text); }
 }
 
 /* Settings overlay on chat */
-#app { position: relative; }
-
 .settings-overlay {
   position: absolute;
   inset: 0;

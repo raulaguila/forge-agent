@@ -1064,7 +1064,16 @@
     }
   });
 
-  setMode("agent");
-  showEmpty();
-  vscode.postMessage({ type: "ready" });
+  try {
+    setMode("agent");
+    showEmpty();
+    vscode.postMessage({ type: "ready" });
+  } catch (err) {
+    const pre = document.createElement("pre");
+    pre.style.cssText = "padding:12px;color:#f48771;white-space:pre-wrap";
+    pre.textContent = "Forge UI error: " + (err && err.message ? err.message : String(err));
+    document.body.innerHTML = "";
+    document.body.appendChild(pre);
+    throw err;
+  }
 })();
