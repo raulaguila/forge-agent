@@ -816,12 +816,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="${styleUri}" rel="stylesheet" />
   <style>
-    /* Critical fallback if styles.css fails to load */
-    html,body{height:100%;margin:0;background:#1a1a1a;color:#ececec;font:13px/1.4 system-ui,sans-serif}
+    /* Critical fallback if styles.css fails to load — prefer VS Code theme tokens */
+    html,body{height:100%;margin:0;background:var(--vscode-sideBar-background,#1e1e1e);color:var(--vscode-foreground,#ccc);font:13px/1.4 var(--vscode-font-family,system-ui,sans-serif)}
     #app{display:flex;flex-direction:column;height:100%;min-height:0}
     #messages{flex:1;overflow:auto;padding:16px}
-    .composer{padding:10px;border-top:1px solid rgba(255,255,255,.08)}
-    #bootError{display:none;margin:12px;padding:10px;border:1px solid #f48771;border-radius:8px;color:#f48771;white-space:pre-wrap}
+    .composer{padding:10px 12px 12px}
+    #bootError{display:none;margin:12px;padding:10px;border:1px solid var(--vscode-errorForeground,#f48771);border-radius:8px;color:var(--vscode-errorForeground,#f48771);white-space:pre-wrap}
     .empty-fallback{opacity:.75;text-align:center;margin-top:24px}
   </style>
   <title>Forge Agent</title>
@@ -879,7 +879,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           <button type="button" class="context-clear" id="btnClearContext" title="Ocultar">×</button>
         </div>
         <div id="mentionPopup" class="mention-popup hidden"></div>
-        <textarea id="input" rows="3" placeholder="Pergunte ao Forge…"></textarea>
+        <textarea id="input" rows="2" placeholder="Pergunte sobre o código…"></textarea>
         <div class="composer-bar">
           <div class="bar-left">
             <div class="select-wrap" id="modeWrap">
@@ -948,9 +948,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
           <div class="bar-right">
             <button id="btnStop" class="chip danger hidden" title="Parar" type="button">Parar</button>
-            <button id="btnSend" class="enter" type="button" title="Enviar">
-              <span class="enter-key">↵</span>
-              <span class="enter-label">Enter</span>
+            <button id="btnSend" class="send" type="button" title="Enviar (Enter)" aria-label="Enviar">
+              <span class="send-icon" aria-hidden="true">↑</span>
             </button>
           </div>
         </div>

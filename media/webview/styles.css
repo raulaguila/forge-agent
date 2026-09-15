@@ -1,17 +1,22 @@
 :root {
-  --bg: var(--vscode-sideBar-background, #121212);
-  --bg-elevated: var(--vscode-editor-background, #1a1a1a);
-  --bg-input: var(--vscode-input-background, #1c1c1c);
-  --text: var(--vscode-foreground, #ececec);
-  --muted: var(--vscode-descriptionForeground, #8f8f8f);
-  --line: var(--vscode-panel-border, rgba(255, 255, 255, 0.09));
-  --accent: var(--vscode-button-background, #3d8bfd);
+  /* Match workbench — one continuous surface */
+  --bg: var(--vscode-sideBar-background, #181818);
+  --bg-elevated: var(--vscode-editorWidget-background, var(--vscode-editor-background, #252526));
+  --bg-input: var(--vscode-input-background, #2a2a2a);
+  --text: var(--vscode-foreground, #cccccc);
+  --muted: var(--vscode-descriptionForeground, #8c8c8c);
+  --line: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+  --focus: var(--vscode-focusBorder, #007fd4);
+  --accent: var(--vscode-button-background, #0e639c);
   --accent-fg: var(--vscode-button-foreground, #fff);
+  --accent-hover: var(--vscode-button-hoverBackground, #1177bb);
   --danger: var(--vscode-errorForeground, #f48771);
   --ok: var(--vscode-charts-green, #89d185);
-  --chip: color-mix(in srgb, var(--text) 7%, transparent);
+  --list-hover: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--text) 8%, transparent));
+  --chip: color-mix(in srgb, var(--text) 6%, transparent);
   --forge: #c9954a;
-  --radius: 14px;
+  --radius: 16px;
+  --radius-sm: 10px;
   --font: var(--vscode-font-family, system-ui, sans-serif);
   --mono: var(--vscode-editor-font-family, ui-monospace, monospace);
 }
@@ -38,15 +43,15 @@ html, body {
 
 .hidden { display: none !important; }
 
-/* —— Header —— */
+/* —— Header (Codex-like: flush with sidebar) —— */
 .top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px 8px 12px;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: blur(8px);
+  padding: 6px 8px 6px 12px;
+  border-bottom: none;
+  background: transparent;
+  flex: 0 0 auto;
 }
 
 .brand {
@@ -57,20 +62,20 @@ html, body {
 }
 
 .mark {
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
   background:
     radial-gradient(circle at 30% 25%, #f6d59a, transparent 55%),
     linear-gradient(145deg, #e8b86d, #8a5a28);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--forge) 35%, transparent);
   flex: 0 0 auto;
 }
 
 .name {
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
 }
 
 .top-actions {
@@ -127,10 +132,10 @@ html, body {
   top: calc(100% + 4px);
   min-width: 190px;
   padding: 4px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  background: var(--vscode-dropdown-background, var(--bg-elevated));
+  border: 1px solid var(--vscode-dropdown-border, var(--line));
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 35%, transparent);
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -155,12 +160,13 @@ html, body {
 #messages {
   flex: 1 1 auto;
   overflow: auto;
-  padding: 18px 14px 12px;
+  padding: 8px 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-height: 0;
   scroll-behavior: smooth;
+  background: transparent;
 }
 
 .msg {
@@ -191,10 +197,10 @@ html, body {
 
 .msg.user {
   align-self: stretch;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--text) 5.5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--list-hover);
+  border: none;
 }
 
 .msg.assistant {
@@ -393,27 +399,31 @@ html, body {
 /* Mode + Edit banners */
 .mode-banner {
   flex: 0 0 auto;
-  padding: 6px 14px 2px;
-  font-size: 11.5px;
+  padding: 0 14px 8px;
+  font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.01em;
   animation: fadeUp 160ms ease-out;
+  background: transparent;
 }
 
-.mode-banner[data-mode="ask"] { color: color-mix(in srgb, var(--muted) 90%, #6cb6ff); }
-.mode-banner[data-mode="plan"] { color: color-mix(in srgb, var(--muted) 85%, var(--forge)); }
-.mode-banner[data-mode="auto"] { color: color-mix(in srgb, var(--muted) 80%, #e6a23c); }
+.mode-banner[data-mode="ask"],
+.mode-banner[data-mode="plan"],
+.mode-banner[data-mode="agent"],
+.mode-banner[data-mode="auto"] {
+  color: var(--muted);
+}
 
 .edit-banner {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 4px 12px 0;
+  margin: 0 12px 8px;
   padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--forge) 35%, var(--line));
-  background: color-mix(in srgb, var(--forge) 10%, var(--bg-elevated));
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-input);
   animation: fadeUp 160ms ease-out;
 }
 
@@ -647,7 +657,7 @@ html, body {
   margin: 0 12px 8px;
   padding: 12px;
   border: 1px solid var(--line);
-  background: var(--bg-elevated);
+  background: var(--bg-input);
   border-radius: var(--radius);
   animation: fadeUp 180ms ease-out;
 }
@@ -681,44 +691,46 @@ html, body {
 
 .usage {
   flex: 0 0 auto;
-  padding: 0 14px 2px;
-  font-size: 11px;
+  padding: 0 16px 6px;
+  font-size: 10.5px;
   color: var(--muted);
   font-family: var(--mono);
+  opacity: 0.85;
 }
 
-/* —— Composer (Continue-inspired) —— */
+/* —— Composer (Codex-inspired) —— */
 .composer {
   flex: 0 0 auto;
-  padding: 8px 10px 10px;
-  background: linear-gradient(to top, var(--bg) 65%, transparent);
+  padding: 4px 12px 12px;
+  background: transparent;
 }
 
 .composer-card {
   position: relative;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: var(--bg-input);
-  padding: 10px 10px 8px;
+  padding: 12px 12px 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  gap: 6px;
+  box-shadow: none;
+  transition: border-color 120ms ease;
 }
 
 .composer-card:focus-within {
-  border-color: color-mix(in srgb, var(--text) 22%, var(--line));
+  border-color: color-mix(in srgb, var(--focus) 70%, var(--line));
 }
 
 .context-strip {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--forge) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--forge) 22%, transparent);
-  font-size: 11.5px;
+  background: color-mix(in srgb, var(--forge) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--forge) 18%, transparent);
+  font-size: 11px;
   color: color-mix(in srgb, var(--text) 85%, var(--forge));
 }
 
@@ -754,25 +766,26 @@ html, body {
   background: transparent;
   color: var(--text);
   resize: none;
-  padding: 2px 2px 0;
+  padding: 0 2px;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.45;
   outline: none;
-  min-height: 52px;
-  max-height: 180px;
+  min-height: 40px;
+  max-height: 160px;
 }
 
 .composer-card textarea::placeholder {
-  color: color-mix(in srgb, var(--muted) 85%, transparent);
+  color: var(--vscode-input-placeholderForeground, var(--muted));
 }
 
 .composer-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 28px;
+  gap: 6px;
+  min-height: 32px;
+  padding-top: 2px;
 }
 
 .bar-left,
@@ -793,28 +806,34 @@ html, body {
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   max-width: 100%;
   border: none;
   background: transparent;
   color: var(--muted);
-  border-radius: 999px;
-  padding: 3px 7px;
+  border-radius: 8px;
+  padding: 4px 6px;
   font: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .pill:hover,
 .pill[aria-expanded="true"] {
-  background: var(--chip);
+  background: var(--list-hover);
   color: var(--text);
 }
 
 .pill.mode {
-  background: color-mix(in srgb, var(--text) 8%, transparent);
+  background: transparent;
   color: var(--text);
+  font-weight: 500;
+}
+
+.pill.mode:hover,
+.pill.mode[aria-expanded="true"] {
+  background: var(--list-hover);
 }
 
 .pill-icon { font-size: 11px; line-height: 1; opacity: 0.9; }
@@ -835,31 +854,67 @@ html, body {
   border: none;
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
-  border-radius: 999px;
-  padding: 3px 9px;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.enter {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: none;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
-  color: var(--text);
   border-radius: 8px;
-  padding: 4px 9px;
+  padding: 4px 10px;
   font: inherit;
   font-size: 11px;
   cursor: pointer;
 }
 
-.enter:hover { background: color-mix(in srgb, var(--text) 16%, transparent); }
-.enter:disabled { opacity: 0.4; cursor: default; }
-.enter-key { font-size: 12px; font-weight: 600; }
-.enter-label { opacity: 0.75; }
+/* Circular send — Codex-style */
+.send {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 120ms ease, opacity 120ms ease, transform 100ms ease;
+}
+
+.send:hover {
+  background: var(--accent-hover);
+}
+
+.send:active {
+  transform: scale(0.94);
+}
+
+.send:disabled {
+  opacity: 0.35;
+  cursor: default;
+  transform: none;
+}
+
+.send-icon {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  margin-top: -1px;
+}
+
+/* legacy alias if any markup still uses .enter */
+.enter {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+}
+
+.enter:hover { background: var(--accent-hover); }
+.enter:disabled { opacity: 0.35; cursor: default; }
+.enter-key, .enter-label { display: none; }
 
 .popover {
   position: absolute;
@@ -868,10 +923,10 @@ html, body {
   min-width: 180px;
   max-width: 260px;
   padding: 4px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  background: var(--vscode-dropdown-background, var(--bg-elevated));
+  border: 1px solid var(--vscode-dropdown-border, var(--line));
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 35%, transparent);
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -1027,15 +1082,15 @@ button.ghost:hover { color: var(--text); }
 
 .demo-banner {
   align-self: center;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
+  font-size: 10px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--forge);
-  background: color-mix(in srgb, var(--forge) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--forge) 28%, transparent);
-  border-radius: 999px;
-  padding: 3px 10px;
-  margin-bottom: 2px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
 }
 
 /* Settings overlay on chat */
