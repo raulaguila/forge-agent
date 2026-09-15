@@ -4,16 +4,12 @@ import { cycleAutonomy, readConfig, setActiveModel, setAutonomy } from "../confi
 import { sanitizeArgsForUi, summarizeToolRequest } from "../agent/toolSummary";
 import { createProvider, providerRequiresApiKey } from "../providers";
 import { listModels } from "../providers/models";
-import { KeyStore, promptAndStoreApiKey } from "../secrets/keys";
+import { KeyStore } from "../secrets/keys";
 import { AgentSession } from "../agent/session";
 import { expandUserMessage, suggestMentions } from "../agent/context";
 import { expandSlash, parseSlash, SLASH_COMMANDS } from "../agent/slash";
 import { openProjectRules } from "../agent/rules";
-import {
-  manageProfilesInteractive,
-  ProfileStore,
-  switchProfileInteractive,
-} from "../agent/profiles";
+import { ProfileStore } from "../agent/profiles";
 import { SessionStore, titleFromMessages } from "../agent/sessions";
 import type { AgentEvent, AutonomyMode, DiffProposal } from "../types";
 import { logError, logInfo, logWarn, showLog } from "../log";
@@ -115,16 +111,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.post({ type: "cleared" });
           break;
         case "openSettings":
-          this.post({ type: "showSettings" });
-          break;
         case "setApiKey":
-          await this.setApiKeyForActive();
-          await this.pushConfig();
-          break;
         case "switchProfile":
         case "manageProfiles":
-          await this.manageProfiles();
-          await this.pushConfig();
+          await vscode.commands.executeCommand("forgeAgent.openSettings");
           break;
         case "pickModel":
           await this.pickModel();
@@ -414,20 +404,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   async switchProfile(): Promise<void> {
-    const profile = await switchProfileInteractive(this.profileStore);
-    if (!profile) return;
-    await this.refreshSessionConfig();
-    await this.pushConfig();
-    void vscode.window.setStatusBarMessage(
-      `Forge Agent: ${profile.name} · ${profile.model}`,
-      3000
-    );
+    await vscode.commands.executeCommand("forgeAgent.openSettings");
   }
 
   async manageProfiles(): Promise<void> {
-    await manageProfilesInteractive(this.profileStore);
-    await this.refreshSessionConfig();
-    await this.pushConfig();
+    await vscode.commands.executeCommand("forgeAgent.openSettings");
   }
 
   async pickModel(): Promise<void> {
@@ -440,7 +421,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         type: "error",
         text: "Configure a API key do perfil ativo antes de listar modelos.",
       });
-      await this.setApiKeyForActive();
+      await vscode.commands.executeCommand("forgeAgent.openSettings");
       return;
     }
 
@@ -507,30 +488,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await this.pushConfig();
   }
 
-  private async setApiKeyForActive(): Promise<void> {
-    await this.profileStore.ensureSeeded();
-    const config = readConfig();
-    await promptAndStoreApiKey(this.keyStore, config.provider, config.profileId);
-    const active = this.profileStore.active();
-    if (active) {
-      const c = vscode.workspace.getConfiguration("forgeAgent");
-      active.provider = c.get("provider", active.provider) as typeof active.provider;
-      active.model = c.get("model", active.model) || active.model;
-      active.baseUrl = (c.get<string>("baseUrl", "") || active.baseUrl).replace(/\/$/, "");
-      active.tlsInsecure = c.get("tlsInsecure", active.tlsInsecure);
-      await this.profileStore.upsert(active);
-      await this.profileStore.setActive(active.id);
-    }
-    await this.refreshSessionConfig();
-  }
-
   private post(message: unknown): void {
     void this.view?.webview.postMessage(message);
     void this.panel?.webview.postMessage(message);
   }
 
+  /** Opens the Forge settings editor tab (not VS Code Settings). */
   showSettings(): void {
-    this.post({ type: "showSettings" });
+    void vscode.commands.executeCommand("forgeAgent.openSettings");
   }
 
   hasView(): boolean {
@@ -613,14 +578,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (providerRequiresApiKey(config.provider) && !apiKey) {
       this.post({
         type: "error",
-        text: "Nenhuma API key configurada. Use “Set API Key (BYOK)”.",
+        text: "Nenhuma API key configurada. Abra Configurações (⚙) para definir a chave do perfil.",
       });
-      await this.setApiKeyForActive();
-      const cfg2 = readConfig();
-      const again = await this.keyStore.getForProfile(cfg2.profileId, cfg2.provider);
-      if (providerRequiresApiKey(cfg2.provider) && !again) {
-        return undefined;
-      }
+      await vscode.commands.executeCommand("forgeAgent.openSettings");
+      return undefined;
     }
 
     let rebuilt;
@@ -956,37 +917,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </div>
     </footer>
 
-    <div id="settingsOverlay" class="settings-overlay hidden" aria-hidden="true">
-      <div class="settings-sheet" role="dialog" aria-label="Configurações">
-        <div class="settings-top">
-          <div class="settings-title">Configurações</div>
-          <button type="button" id="btnCloseSettings" class="icon-btn" title="Fechar" aria-label="Fechar">×</button>
-        </div>
-        <div class="settings-body">
-          <section class="settings-block">
-            <div class="settings-label">Perfil ativo</div>
-            <div id="settingsProfile" class="settings-value">—</div>
-          </section>
-          <section class="settings-block">
-            <div class="settings-label">Provedor</div>
-            <div id="settingsProvider" class="settings-value">—</div>
-          </section>
-          <section class="settings-block">
-            <div class="settings-label">Modelo</div>
-            <div id="settingsModel" class="settings-value">—</div>
-          </section>
-          <section class="settings-block">
-            <div class="settings-label">API key</div>
-            <div id="settingsKey" class="settings-value">—</div>
-          </section>
-          <p class="settings-note">Ajuste fino de perfis e keys continua no painel completo. Esta folha fica sobre o chat, no estilo Continue.</p>
-          <div class="settings-actions">
-            <button type="button" id="btnSettingsProfiles" class="ghost">Gerenciar perfis</button>
-            <button type="button" id="btnSettingsKey" class="primary">Definir API key</button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
   <script nonce="${nonce}">
     (function () {

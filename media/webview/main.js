@@ -12,7 +12,6 @@
   const modeMenu = document.getElementById("modeMenu");
   const modelMenu = document.getElementById("modelMenu");
   const modelList = document.getElementById("modelList");
-  const settingsOverlay = document.getElementById("settingsOverlay");
   const modeBanner = document.getElementById("modeBanner");
   const editBanner = document.getElementById("editBanner");
   const editFile = document.getElementById("editFile");
@@ -29,9 +28,6 @@
   const btnComposerSettings = document.getElementById("btnComposerSettings");
   const btnModelSettings = document.getElementById("btnModelSettings");
   const btnAddModel = document.getElementById("btnAddModel");
-  const btnCloseSettings = document.getElementById("btnCloseSettings");
-  const btnSettingsProfiles = document.getElementById("btnSettingsProfiles");
-  const btnSettingsKey = document.getElementById("btnSettingsKey");
   const btnExitEdit = document.getElementById("btnExitEdit");
   const modeIcon = document.getElementById("modeIcon");
   const modeLabel = document.getElementById("modeLabel");
@@ -285,25 +281,9 @@
     if (!demo) vscode.postMessage({ type: "selectModel", model: id });
   }
 
-  function openSettingsOverlay() {
+  function openEditorSettings() {
     closeMenus();
-    if (!settingsOverlay) return;
-    const profileEl = document.getElementById("settingsProfile");
-    const providerEl = document.getElementById("settingsProvider");
-    const modelEl = document.getElementById("settingsModel");
-    const keyEl = document.getElementById("settingsKey");
-    if (profileEl) profileEl.textContent = currentProfile || "—";
-    if (providerEl) providerEl.textContent = currentProvider || "—";
-    if (modelEl) modelEl.textContent = currentModel || "—";
-    if (keyEl) keyEl.textContent = hasKey ? "configurada" : "ausente";
-    settingsOverlay.classList.remove("hidden");
-    settingsOverlay.setAttribute("aria-hidden", "false");
-  }
-
-  function closeSettingsOverlay() {
-    if (!settingsOverlay) return;
-    settingsOverlay.classList.add("hidden");
-    settingsOverlay.setAttribute("aria-hidden", "true");
+    if (!demo) vscode.postMessage({ type: "openSettings" });
   }
 
   function ensureList() {
@@ -758,7 +738,6 @@
     if (contextStrip) contextStrip.classList.add("hidden");
     if (usageEl) usageEl.classList.add("hidden");
     setEditMode({ active: false });
-    closeSettingsOverlay();
     hideApproval();
     showEmpty();
   }
@@ -824,32 +803,19 @@
   if (btnComposerSettings)
     btnComposerSettings.addEventListener("click", function (e) {
       e.stopPropagation();
-      openSettingsOverlay();
+      openEditorSettings();
     });
   if (btnModelSettings)
     btnModelSettings.addEventListener("click", function (e) {
       e.stopPropagation();
       closeModelMenu();
-      openSettingsOverlay();
+      openEditorSettings();
     });
   if (btnAddModel)
     btnAddModel.addEventListener("click", function (e) {
       e.stopPropagation();
       closeModelMenu();
-      openSettingsOverlay();
-    });
-  if (btnCloseSettings) btnCloseSettings.addEventListener("click", closeSettingsOverlay);
-  if (settingsOverlay)
-    settingsOverlay.addEventListener("click", function (e) {
-      if (e.target === settingsOverlay) closeSettingsOverlay();
-    });
-  if (btnSettingsProfiles)
-    btnSettingsProfiles.addEventListener("click", function () {
-      vscode.postMessage({ type: "manageProfiles" });
-    });
-  if (btnSettingsKey)
-    btnSettingsKey.addEventListener("click", function () {
-      vscode.postMessage({ type: "setApiKey" });
+      openEditorSettings();
     });
   if (btnClearContext)
     btnClearContext.addEventListener("click", function () {
@@ -875,7 +841,7 @@
       const action = btn.getAttribute("data-action");
       closeMenus();
       if (action === "demo") toggleDemo();
-      if (action === "settings") openSettingsOverlay();
+      if (action === "settings") openEditorSettings();
       if (action === "history") vscode.postMessage({ type: "listSessions" });
       if (action === "undo") vscode.postMessage({ type: "undoCheckpoint" });
     });
@@ -889,7 +855,6 @@
         return;
       }
       closeMenus();
-      closeSettingsOverlay();
     }
     if ((e.ctrlKey || e.metaKey) && e.key === ".") {
       e.preventDefault();
@@ -952,9 +917,6 @@
         models = msg.models || [];
         renderModelList();
         break;
-      case "showSettings":
-        openSettingsOverlay();
-        break;
       case "editMode":
         setEditMode(msg);
         break;
@@ -964,7 +926,6 @@
       case "cleared":
         hideApproval();
         hideMentions();
-        closeSettingsOverlay();
         setEditMode({ active: false });
         if (demo) exitDemo();
         else showEmpty();

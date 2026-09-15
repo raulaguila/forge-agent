@@ -44,11 +44,6 @@ function activateSafe(context: vscode.ExtensionContext): void {
   );
 
   const openSettings = () => {
-    // Prefer Continue-style sheet over the chat webview.
-    if (chat.hasView()) {
-      chat.showSettings();
-      return;
-    }
     SettingsPanel.createOrShow(context.extensionUri, keyStore, profileStore, () =>
       chat.refreshUi()
     );
